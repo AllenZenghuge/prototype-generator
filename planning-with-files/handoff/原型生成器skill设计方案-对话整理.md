@@ -1,20 +1,22 @@
 ---
 title: 原型生成器 Skill 设计方案 — 对话整理
-date: 2026-06-30
+date: 2026-07-01
 tags:
   - prototype
   - skill
   - html-css
   - design-system
   - handoff
+  - github
 aliases:
   - deepal 原型工作流分析与 skill 设计
-  - '/prototype:docs /prototype:shot'
+  - '/prototype-generator docs shot config'
 description: >
   基于 deepal 项目已验证的 HTML 原型生成工作流分析，与 Allen 逐步对齐需求后，
-  完成了通用型 prototype-generator skill 的完整设计方案。Skill 支持 docs-mode
-  （需求文档→原型）和 shot-mode（截图→原型），集成 ui-ux-pro-max、frontend-design、
-  screenshot-to-code 三个外部 skill，产出兼容 Axure/墨刀导入。
+  完成了通用型 prototype-generator skill 的完整设计、实现、测试和 GitHub 发布。
+  Skill 支持 docs-mode（需求文档→原型）和 shot-mode（截图→原型），
+  集成 ui-ux-pro-max、frontend-design、screenshot-to-code 三个外部 skill，
+  产出兼容 Axure/墨刀导入。已通过长安汽车销项开票截图的端到端测试。
 source: Claude Code 对话
 ---
 
@@ -25,6 +27,7 @@ source: Claude Code 对话
 | 时间 | 修订内容 |
 |------|---------|
 | 2026-06-30 14:52 | 初始版本，整理对话中所有设计决策和产出 |
+| 2026-07-01 09:24 | 更新：实现完成、shot-mode 测试通过、GitHub 发布、命令路由修复、Changelog 机制 |
 
 ---
 
@@ -114,9 +117,12 @@ source: Claude Code 对话
 
 | 命令 | 作用 |
 |------|------|
-| `/prototype:docs` | 文档驱动：需求.md + 规范.md → HTML 原型 |
-| `/prototype:shot` | 截图驱动：截图.png + 规范.md → HTML 原型 |
-| `/prototype:config` | 配置管理 |
+| `/prototype-generator docs` | 文档驱动：需求.md + 规范.md → HTML 原型 |
+| `/prototype-generator shot` | 截图驱动：截图.png + 规范.md → HTML 原型 |
+| `/prototype-generator config` | 配置管理 |
+
+> 注：原设计为 `/prototype:docs`，实现后发现 Claude Code 不支持子命令路由，
+> 改为通过 Skill 参数路由 `/prototype-generator [docs|shot|config]`。
 
 ### 4.2 目录结构
 
@@ -149,14 +155,66 @@ source: Claude Code 对话
 | 文件 | 路径 |
 |------|------|
 | **设计 Spec** | `docs/superpowers/specs/20260630-prototype-generator-skill-design.md` |
+| **实现计划** | `docs/superpowers/plans/20260630-prototype-generator-skill-implementation.md` |
+| **Skill 文件 (7)** | `.claude/skills/prototype-generator/` |
+| **GitHub** | https://github.com/AllenZenghuge/prototype-generator |
+
+### 5.1 Skill 文件清单
+
+| 文件 | 行数 | 职责 |
+|------|------|------|
+| `SKILL.md` | 89 | 入口 + 参数路由 + Step 0 依赖检查 + Changelog |
+| `config.md` | 77 | 配置管理 + 首次使用向导 |
+| `docs-mode/template.md` | 145 | 四层 /goal 提示词模板 |
+| `docs-mode/prompt-builder.md` | 161 | 文档解析 → ui-ux-pro-max → frontend-design → 填模板 |
+| `shot-mode/vision-analyzer.md` | 132 | Qwen3-VL API 调用 + JSON Schema |
+| `shot-mode/prompt-builder.md` | 81 | 截图分析 → screenshot-to-code → 填模板 |
+| `verifier.md` | 162 | 12 项 docs + 4 项 shot 自动化验证 |
 
 ---
 
-## 6. 下一步
+## 6. 实现与测试
 
-Spec 已就绪，待 Allen 审阅确认后进入实现阶段：
-1. 编写 SKILL.md 入口文件
-2. 实现泛化提示词模板
-3. 实现两个模式的 prompt-builder
-4. 实现 verifier
-5. 实现 config 管理
+### 6.1 实现过程发现的修正
+
+| # | 问题 | 修正 |
+|----|------|------|
+| 1 | `/prototype:docs` 等子命令无法识别 | 改为参数路由 `/prototype-generator docs` |
+| 2 | SKILL.md 缺少版本记录 | 新增 Changelog 章节 |
+| 3 | `.claude/skills/` 写入触发安全告警 | 正常——skill 创建即 self-modification |
+| 4 | cc_test 其他文件出现在源代码管理 | .gitignore 排除非 skill 文件 |
+| 5 | 虹信规范文档不能推公开仓库 | .gitignore 排除 `prototype/` 全部 |
+
+### 6.2 Shot-Mode 端到端测试
+
+**测试截图**：长安汽车销项开票 — 所有单据（列表页，空数据状态）
+
+**Pipeline 执行**：
+```
+Step 0  ✅ 依赖检查 (3/3)
+Phase 1 ✅ Qwen3-VL-Plus 像素分析
+Phase 2 ✅ screenshot-to-code 语义映射
+Phase 3 ✅ ui-ux-pro-max 设计系统
+Phase 4 ✅ frontend-design 审查
+Phase 5 ✅ 生成输出 (589行 CSS + 127行 HTML + JS)
+```
+
+**产出质量**：筛选栏、Tab、表格 9 列、空状态、分页均已还原，主色 #3B82F6 与截图一致。
+
+### 6.3 配置状态
+
+```
+Vision model:   Qwen3-VL-Plus
+Default spec:   ./规范.md
+Verification:   enabled (playwright)
+```
+
+---
+
+## 7. 下一步
+
+Skill 已完成设计、实现、测试、发布。后续使用中迭代：
+- docs-mode 端到端测试（需准备需求文档）
+- Playwright 自动验证集成测试
+- 规范文档 PDF 自动提取（复用 pdfplumber）
+- CHANGELOG 按迭代持续更新
