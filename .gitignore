@@ -1,0 +1,49 @@
+# Secrets
+.env
+prototype/prototype.config.json
+prototype/shots/payload*.json
+prototype/shots/screenshot.b64
+
+# OS
+.DS_Store
+__MACOSX/
+
+# Python
+.venv/
+
+# Playwright
+.playwright-mcp/
+
+# Project-specific (user's own docs, not part of skill)
+prototype/
+docs/superpowers-usage-guide.md
+docs/gstack-usage-guide.md
+docs/handoff-2026-06-09.md
+docs/ui-ux-pro-max-and-frontend-design-usage-guide.md
+docs/superpowers/plans/20260602_v1.0_web2md-implementation-plan.md
+docs/superpowers/plans/20260614_v1.0_素材提取App实现计划.md
+docs/superpowers/specs/20260602_v1.0_web2md-skill-design.md
+docs/superpowers/specs/20260614_v1.0_素材提取App设计.md
+agentmemory-usage.md
+ai_call.py
+backend/
+myapp/
+web2md/
+20260605_ES发票数据查询可行性调研*.md
+
+# Previous project handoffs
+planning-with-files/agentmemory调研/
+planning-with-files/es发票调研/
+planning-with-files/handoff/Office文档技能全局安装.md
+planning-with-files/handoff/Skill安装与agentmemory配置.md
+planning-with-files/handoff/Sublime Text MarkdownPreview插件安装与配置.md
+planning-with-files/handoff/Superpowers技能安装与策略配置.md
+planning-with-files/handoff/agentmemory启动失败排查与修复.md
+planning-with-files/handoff/web2md-skill设计与实现.md
+planning-with-files/handoff/素材提取App开发会话.md
+
+# Tool configs
+.claude/settings.local.json
+.gstack/
+.superpowers/
+.vscode/
