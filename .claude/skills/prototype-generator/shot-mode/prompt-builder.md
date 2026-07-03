@@ -79,3 +79,21 @@ Present the complete prompt as in docs-mode Phase 4. When user confirms "go", ex
 ### After Generation
 
 After files are generated, proceed to verifier.md with the additional `shot-mode` verification steps (pixel-level comparison).
+
+### Post-Generation Self-Check (NEW — 2026-07-03)
+
+Before handing off to user, run this mandatory self-check against the page template in the spec doc:
+
+**Read `prototype/规范.md` §14 (标准页面模板) and verify:**
+```
+[ ] Sidebar: full-height, dark #001529, logo+search+menu+collapse button
+[ ] Primary header: tabs + grid icon + home icon + active tab + right-side icons (bell, gear, avatar)
+[ ] Secondary header: status filter tabs (草稿/流程中/所有单据)
+[ ] Filter bar: sticky top, left/right split layout
+[ ] Table: checkbox column + row number column + action icon buttons (6 icons, no text links)
+[ ] Table: min-width for horizontal scroll, number columns right-aligned
+[ ] Bottom bar: 合计金额 left + pagination right, same row, outside table wrapper
+[ ] No duplicate UI elements (check for legacy code from incremental edits)
+```
+
+**If any check fails**, fix before presenting to user. This prevents the most common iteration patterns discovered in shot-mode testing.

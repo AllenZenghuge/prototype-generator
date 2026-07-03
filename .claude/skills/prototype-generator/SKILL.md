@@ -13,6 +13,7 @@ description: Generate interactive HTML prototypes from requirements docs + desig
 |------|---------|
 | 2026-06-30 | v1.0 初始版本，支持 docs/shot/config 三种模式，参数路由 |
 | 2026-07-01 | 命令路由修复（/prototype:docs→/prototype-generator docs）、shot-mode 端到端测试通过、发布 GitHub |
+| 2026-07-03 | vision-analyzer 新增 Phase 0（上下文收集+确认），修复多截图列漏识别；规范.md 新增 §14 标准页面模板；prompt-builder 新增生成后自检；组件类型枚举细化（button-icon/text/link）；质量审计完成 |
 
 ## How to Use
 

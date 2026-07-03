@@ -1,6 +1,6 @@
 ---
 title: 原型生成器 Skill 设计方案 — 对话整理
-date: 2026-07-01
+date: 2026-07-03
 tags:
   - prototype
   - skill
@@ -28,6 +28,7 @@ source: Claude Code 对话
 |------|---------|
 | 2026-06-30 14:52 | 初始版本，整理对话中所有设计决策和产出 |
 | 2026-07-01 09:24 | 更新：实现完成、shot-mode 测试通过、GitHub 发布、命令路由修复、Changelog 机制 |
+| 2026-07-03 17:00 | 更新：shot-mode ~15轮迭代根因分析、规范.md §14 标准页面模板、vision-analyzer Phase 0 上下文收集、prompt-builder 生成后自检、Skill 质量审计报告 |
 
 ---
 
@@ -211,10 +212,55 @@ Verification:   enabled (playwright)
 
 ---
 
-## 7. 下一步
+## 7. Shot-Mode 迭代优化（2026-07-03）
 
-Skill 已完成设计、实现、测试、发布。后续使用中迭代：
-- docs-mode 端到端测试（需准备需求文档）
-- Playwright 自动验证集成测试
-- 规范文档 PDF 自动提取（复用 pdfplumber）
-- CHANGELOG 按迭代持续更新
+### 7.1 根因分析
+
+首次 shot-mode 端到端测试（深蓝汽车销项开票页面）经历 ~15 轮迭代，6 个根因：
+
+| # | 根因 | 严重度 | 状态 |
+|----|------|:---:|:---:|
+| 1 | 视觉模型上下文丢失——用户描述未传入 API prompt | 高 | ✅ Phase 0 |
+| 2 | 缺少页面模板骨架——每次从头推断布局 | 高 | ✅ 规范.md §14 |
+| 3 | 多截图上下文未传递——第二张图不知第一张的结果 | 高 | ✅ Phase 0.4 |
+| 4 | 组件类型粒度不足——图标按钮被识别为文字链接 | 中 | ✅ 枚举细化 |
+| 5 | 增量修改代码残留——旧 header-right 未清理 | 中 | ✅ 模板化 |
+| 6 | 缺少生成后自检——问题依赖用户反馈 | 高 | ✅ 自检清单 |
+
+详见 `docs/superpowers/specs/20260703-shot-mode-root-cause-analysis.md`
+
+### 7.2 Skill 改进清单
+
+| # | 改进项 | 涉及文件 |
+|----|--------|---------|
+| P0 | prompt-builder 增加「生成后自检」对照规范.md §14 | 两个 prompt-builder |
+| P0 | ANALYSIS_PROMPT 组件类型枚举（button-icon/text/link-text/checkbox） | vision-analyzer.md |
+| P1 | 多截图结果自动合并 JSON | shot-mode prompt-builder |
+| P1 | SKILL.md 快速排错指引 | SKILL.md |
+| P2 | 分析结果缓存（同截图不重复调 API） | vision-analyzer.md |
+
+### 7.3 页面模板固化
+
+规范.md 新增 **§14 标准页面模板**，8 项固定不变：
+1. 侧边栏全高 + Logo + 搜索 + 菜单
+2. 一级顶栏（Tab + 图标 + 用户区）
+3. 二级顶栏（状态筛选 Tab）
+4. Sticky 筛选栏（左右布局）
+5. 表格前列（复选框 + 序号 + 操作图标）
+6. 表格横向滚动 + 数值右对齐
+7. 底部合计+分页同行
+8. CSS Token + Ant Design 图标
+
+---
+
+## 8. 当前产出物总览
+
+| 文件 | 路径 |
+|------|------|
+| 设计 Spec | `docs/superpowers/specs/20260630-prototype-generator-skill-design.md` |
+| 根因分析 | `docs/superpowers/specs/20260703-shot-mode-root-cause-analysis.md` |
+| 实现计划 | `docs/superpowers/plans/20260630-prototype-generator-skill-implementation.md` |
+| Skill (7 files) | `.claude/skills/prototype-generator/` |
+| 页面模板 | `prototype/规范.md` §14 |
+| 测试原型 | `prototype/output/` (css/js/pages) |
+| GitHub | https://github.com/AllenZenghuge/prototype-generator |
