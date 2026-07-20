@@ -8,7 +8,19 @@ Read `prototype/prototype.config.json`:
 - If `verification.enabled` is false, skip verification and only output file list.
 - `verification.engine`: "playwright" or "agentcloak"
 
-## docs-mode Verification (12 Checks)
+## docs-mode Verification (13 Checks)
+
+### Check 0: JS Syntax (no browser needed — run first)
+
+Before any other checks, validate all shared JS files:
+
+```
+[ ] 0. JS syntax valid
+    - Run: node -c prototype/output/js/common.js
+    - Run: node -c prototype/output/js/framework.js
+    - FAIL if any syntax error
+    - Report the exact error message and line number
+```
 
 ### Check 1-5: CSS Analysis (no browser needed)
 
@@ -87,7 +99,7 @@ For each `.html` file in `prototype/output/pages/`:
 ## Verification Report
 
 ### Summary
-- Passed: {N}/12
+- Passed: {N}/13
 - Failed: {M}/12
 - Warnings: {W}
 

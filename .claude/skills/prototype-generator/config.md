@@ -9,10 +9,13 @@
 ```json
 {
   "vision_model": {
-    "provider": "qwen3-vl-plus",
+    "provider": "qwen3.7-max",
     "api_key": "",
-    "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-    "model_name": "qwen3-vl-plus"
+    "base_url": "https://ws-udt9j53khqthrs7z.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
+    "model_name": "qwen3.7-max-2026-06-08",
+    "timeout_ms": 90000,
+    "retry_max": 3,
+    "retry_delay_ms": 5000
   },
   "default_spec": "./规范.md",
   "output_dir": "./output",
@@ -33,7 +36,7 @@ When `prototype/prototype.config.json` does not exist:
 
 ```
 "First time setup! Which vision model provider for screenshot analysis?
-1. Qwen3-VL-Plus (default, needs API key)
+1. Qwen3.7-Max (default, needs API key)
 2. Claude Vision (built-in, no API key needed)
 3. GPT-4o (needs API key)
 
@@ -51,6 +54,7 @@ When called with no arguments, read and display `prototype/prototype.config.json
 ```
 "Current configuration:
   Vision model: {provider} ({model_name})
+  API timeout: {timeout_ms}ms, retry: {retry_max}× (delay {retry_delay_ms}ms)
   Default spec: {path}
   Output dir: {path}
   Resolutions: {list}
@@ -59,9 +63,16 @@ When called with no arguments, read and display `prototype/prototype.config.json
 
 ### Change vision model: `/prototype:config vision`
 1. Show current vision model config
-2. Ask: `"Change to which provider? (qwen3-vl-plus / claude-vision / gpt-4o)"`
+2. Ask: `"Change to which provider? (qwen3.7-max / claude-vision / gpt-4o)"`
 3. If API key needed, prompt for it
 4. Update `prototype/prototype.config.json`
+
+### Change API retry settings: `/prototype:config retry`
+1. Show current timeout/retry values
+2. Ask: `"Change which? (timeout / retry_max / retry_delay)"`
+3. Prompt for new value
+4. Update `prototype/prototype.config.json`
+5. Confirm: `"API retry settings updated: timeout={x}ms, retry={n}×, delay={y}ms"`
 
 ### Change spec path: `/prototype:config spec`
 1. Prompt for new spec path

@@ -13,7 +13,7 @@ description: Generate interactive HTML prototypes from requirements docs + desig
 |------|---------|
 | 2026-06-30 | v1.0 初始版本，支持 docs/shot/config 三种模式，参数路由 |
 | 2026-07-01 | 命令路由修复（/prototype:docs→/prototype-generator docs）、shot-mode 端到端测试通过、发布 GitHub |
-| 2026-07-03 | vision-analyzer 新增 Phase 0（上下文收集+确认），修复多截图列漏识别；规范.md 新增 §14 标准页面模板；prompt-builder 新增生成后自检；组件类型枚举细化（button-icon/text/link）；质量审计完成 |
+| 2026-07-20 | v1.1 全面优化 — Vision API 可靠性（脚本化执行+超时重试+失败不跳过）；页面隔离铁律（共享文件修改规则+菜单隔离）；强制自检 Phase 7（JS语法/多页回归/§14模板/CSS Token/控件高度）；子组件专用 prompt（弹窗/侧边栏）；5种截图关系枚举；基线自动管理；分析结果强制保存 |
 
 ## How to Use
 
@@ -99,8 +99,16 @@ args = "shot"   → 运行 Step 0 依赖检查，通过后跳到 §Shot Mode
 1. Read `config.md` to learn configuration and check vision model setup
 2. Verify `prototype/` directory; create if missing
 3. Verify `prototype/shots/` has screenshots; if not, prompt user
-4. Read `shot-mode/vision-analyzer.md` and follow its pixel analysis instructions
-5. Read `shot-mode/prompt-builder.md` and follow its instructions exactly
+4. Read `shot-mode/vision-analyzer.md` and follow its pixel analysis instructions:
+   - **Phase 0.3**: 确认截图关系类型（5 种枚举：独立/同页不同态/水平分割/垂直分割/主从）
+   - **Phase 0.5**: [表单页] 提取侧边栏菜单结构
+   - **Phase 1**: API 调用（脚本化执行 + 超时重试 + 失败提示用户决策）
+   - **Phase 2**: 强制保存分析结果（每次 API 调用后立即保存，含失败时的 error.json）
+5. Read `shot-mode/prompt-builder.md` and follow its instructions exactly:
+   - **Phase 0.5**: 遵守页面隔离铁律（framework.js/common.js/common.css 修改规则）
+   - **Phase 0.6**: 基线检查（已有页面自动创建基线备份）
+   - **Phase 1-6**: 生成 HTML 原型
+   - **Phase 7**: 强制自检（JS 语法 + 多页回归 + §14 模板 + CSS Token + 控件高度）
 6. Read `docs-mode/template.md` for the /goal prompt template structure
 7. After generation completes, read `verifier.md` and follow its instructions
 
@@ -118,7 +126,7 @@ See `config.md` for configuration errors. For execution errors:
 | Spec doc unparseable | Stop, list sections that couldn't be parsed |
 | Requirements have unclear page list | Stop, list detected pages, ask user to confirm |
 | Screenshot quality too low | Prompt user for higher resolution (2x recommended) |
-| Vision model API failure (shot-mode) | Fall back to spec-only generation, skip pixel analysis |
+| Vision model API failure (shot-mode) | Save error file, prompt user with 3 options: retry / switch model / manual description. DO NOT skip. |
 | Screenshot conflicts with spec | List conflicts, ask user which takes priority |
 | >50 pages detected | Split into batches of ≤15 pages |
 | Playwright unavailable | Fall back to manual verification checklist |
