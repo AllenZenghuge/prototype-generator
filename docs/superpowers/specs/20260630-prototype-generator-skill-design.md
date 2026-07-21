@@ -330,7 +330,7 @@ Step 2 — 视觉模型配置（首次使用）
   └── 未配置 → 引导选择 provider + API Key → 写入 prototype.config.json
 
 Step 3 — 像素级分析（视觉模型）
-  ├── 逐张截图调用视觉模型（默认 Qwen3-VL-Plus）
+  ├── 逐张截图调用视觉模型（默认 Qwen3.7-Max）
   └── 输出结构化描述：
        · 布局结构（header / sidebar / content / footer）
        · 组件层级（table > thead > tr > th...）
@@ -376,10 +376,10 @@ Step 8 — 像素级验证
 ```json
 {
   "vision_model": {
-    "provider": "qwen3-vl-plus",
+    "provider": "qwen3.7-max",
     "api_key": "",
-    "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-    "model_name": "qwen3-vl-plus"
+    "base_url": "https://ws-udt9j53khqthrs7z.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
+    "model_name": "qwen3.7-max-2026-06-08"
   },
   "default_spec": "./规范.md",
   "output_dir": "./output",
@@ -404,7 +404,7 @@ Step 8 — 像素级验证
 
 | Provider | 默认模型 | 需要 API Key |
 |----------|----------|:---:|
-| qwen3-vl-plus | qwen3-vl-plus | 是 |
+| qwen3.7-max | qwen3.7-max-2026-06-08 | 是 |
 | claude-vision | claude-sonnet-4-6 | 否（内置） |
 | gpt-4o | gpt-4o | 是 |
 

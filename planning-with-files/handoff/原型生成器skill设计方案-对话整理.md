@@ -193,7 +193,7 @@ source: Claude Code 对话
 **Pipeline 执行**：
 ```
 Step 0  ✅ 依赖检查 (3/3)
-Phase 1 ✅ Qwen3-VL-Plus 像素分析
+Phase 1 ✅ Qwen3.7-Max 像素分析
 Phase 2 ✅ screenshot-to-code 语义映射
 Phase 3 ✅ ui-ux-pro-max 设计系统
 Phase 4 ✅ frontend-design 审查
@@ -205,7 +205,7 @@ Phase 5 ✅ 生成输出 (589行 CSS + 127行 HTML + JS)
 ### 6.3 配置状态
 
 ```
-Vision model:   Qwen3-VL-Plus
+Vision model:   Qwen3.7-Max
 Default spec:   ./规范.md
 Verification:   enabled (playwright)
 ```

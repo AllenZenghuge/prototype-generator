@@ -22,14 +22,14 @@ source: spec/20260630-prototype-generator-skill-design.md
 
 **Architecture:** Skill 由 7 个 Markdown 文件组成。入口 SKILL.md 路由到两个模式的 prompt-builder。每个 builder 按四层模板（不可变/值变量化/结构保持/内容驱动）构造 /goal 提示词。产物通过 Playwright + 视觉模型自动验证。
 
-**Tech Stack:** Claude Code Skill (Markdown) + 外部 Skill 联动 (ui-ux-pro-max, frontend-design, screenshot-to-code) + Playwright MCP + Qwen3-VL-Plus
+**Tech Stack:** Claude Code Skill (Markdown) + 外部 Skill 联动 (ui-ux-pro-max, frontend-design, screenshot-to-code) + Playwright MCP + Qwen3.7-Max
 
 ## Global Constraints
 
 - 产出兼容 Axure/墨刀 HTML 导入（无复杂 JS 框架依赖）
 - `/prototype:docs` 和 `/prototype:shot` 均须先执行 Step 0 依赖检查
 - CONSTRAINTS 默认值使用 deepal `/goal` 模板原值，用户规范可覆盖
-- 视觉模型默认 Qwen3-VL-Plus，可通过 `/prototype:config` 切换
+- 视觉模型默认 Qwen3.7-Max，可通过 `/prototype:config` 切换
 - 所有文件输出到 `prototype/output/` 目录
 - 验证阶段：docs-mode 12 项检查，shot-mode 额外 4 项像素检查
 
@@ -204,10 +204,10 @@ Expected: ~80 lines, file exists.
 ```json
 {
   "vision_model": {
-    "provider": "qwen3-vl-plus",
+    "provider": "qwen3.7-max",
     "api_key": "",
-    "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-    "model_name": "qwen3-vl-plus"
+    "base_url": "https://ws-udt9j53khqthrs7z.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
+    "model_name": "qwen3.7-max-2026-06-08"
   },
   "default_spec": "./规范.md",
   "output_dir": "./output",
@@ -228,7 +228,7 @@ When `prototype/prototype.config.json` does not exist:
 
 ```
 "First time setup! Which vision model provider for screenshot analysis?
-1. Qwen3-VL-Plus (default, needs API key)
+1. Qwen3.7-Max (default, needs API key)
 2. Claude Vision (built-in, no API key needed)
 3. GPT-4o (needs API key)
 
@@ -254,7 +254,7 @@ When called with no arguments, read and display `prototype/prototype.config.json
 
 ### Change vision model: `/prototype:config vision`
 1. Show current vision model config
-2. Ask: `"Change to which provider? (qwen3-vl-plus / claude-vision / gpt-4o)"`
+2. Ask: `"Change to which provider? (qwen3.7-max / claude-vision / gpt-4o)"`
 3. If API key needed, prompt for it
 4. Update `prototype/prototype.config.json`
 
@@ -657,21 +657,21 @@ Read `prototype/prototype.config.json` → `vision_model`. Determine provider:
 
 | Provider | API Call Method |
 |----------|----------------|
-| qwen3-vl-plus | OpenAI-compatible API via `Bash` tool with curl |
+| qwen3.7-max | OpenAI-compatible API via `Bash` tool with curl |
 | claude-vision | Read the image file and pass to Claude's vision capability directly |
 | gpt-4o | OpenAI API via `Bash` tool with curl |
 
-## Qwen3-VL-Plus API Call (Default)
+## Qwen3.7-Max API Call (Default)
 
-When provider is `qwen3-vl-plus`:
+When provider is `qwen3.7-max`:
 
 ```bash
 # For each screenshot in prototype/shots/:
-curl -s "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions" \
+curl -s "https://ws-udt9j53khqthrs7z.cn-beijing.maas.aliyuncs.com/compatible-mode/v1/chat/completions" \
   -H "Authorization: Bearer {API_KEY}" \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "qwen3-vl-plus",
+    "model": "qwen3.7-max-2026-06-08",
     "messages": [
       {
         "role": "user",
