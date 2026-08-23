@@ -14,6 +14,7 @@
 | 2026-06-22 16:36:28 | 修正虚构时间：3 条 06-22 条目（01:30/01:45/02:00）均在文件系统 mtime 00:36:57 之后，合并为一条真实时间 |
 | 2026-08-09 00:00:00 | 全面审计：核对代码实际状态 vs 设计文档，从 mockup 提取权威色彩/材质值，识别文档缺口，新增 v2.0 实现路径和 Git 操作建议 |
 | 2026-08-10 00:00:00 | v2.0 代码实现完成：TDD 流程 17 文件改动、3 Tab 毛玻璃全页面落地、TC-V2-01~10 测试通过、后端 venv 配置、分支管理就绪 |
+| 2026-08-23 00:00:00 | 文件名三段式 + 存储策略改「文件」App；MediaExtractor 创建私有 GitHub 仓库并 push（main + feature + tag） |
 
 ---
 
@@ -203,17 +204,22 @@ myapp/素材提取/
 
 ## Git 分支与标签
 
+> 远程仓库：https://github.com/AllenZenghuge/MediaExtractor（私有）
+
 | 分支/标签 | 内容 | 状态 |
 |----------|------|------|
-| `main` | v1.1 暗房主题基线 | ✅ 已 commit（`4a61fa9`） |
-| `v1.1-darkroom` | v1.1 tag | ✅ 已打 |
-| `feature/v2.0-glassmorphism` | v2.0 毛玻璃代码实现 | ✅ 已 commit（`6f06fee`），待合并 |
+| `main` | v1.1 暗房主题基线 | ✅ 已 push（`4a61fa9`） |
+| `v1.1-darkroom` | v1.1 tag | ✅ 已 push |
+| `feature/v2.0-glassmorphism` | v2.0 毛玻璃 + 文件名三段式 + 文件 App 存储 | ✅ 已 push（`87083c2`），待合并 |
 | `v2.0-glassmorphism` | v2.0 tag | ⏸ 合并后打 |
 
 ```bash
 # 查看分支
 cd "myapp/素材提取/04-App源码/MediaExtractor"
 git branch -a
+
+# 克隆远程仓库
+git clone https://github.com/AllenZenghuge/MediaExtractor.git
 
 # v2.0 开发在此分支
 git checkout feature/v2.0-glassmorphism
@@ -228,7 +234,7 @@ git checkout feature/v2.0-glassmorphism
 | X 解析方式 | `__NEXT_DATA__` JSON | **vxtwitter API** | X 页面结构变更 |
 | 代理配置 | 硬编码 `127.0.0.1:7897` | **HTTPS_PROXY 环境变量** | 开发/线上环境分离 |
 | 重新下载 | 原地修改 DownloadItem | **删旧建新**（delete+insert） | SwiftData @Model 引用/线程安全 |
-| 存储策略 | tmp 目录 | **Caches中转→DCIM→删临时** | 不存双份 |
+| 存储策略 | 相册 DCIM | **文件 App（Documents/Media）** | 相册文件名系统锁定 IMG_XXXX，文件 App 文件名 100% 可控 |
 | 下载方式 | 全量保存 | **仅勾选项保存** | 用户选择性下载 |
 | 视频缩略图 | 仅 VideoItem | **同时为 ImageItem** | 纯视频推文可下载封面 |
 | 视觉风格（v2.0） | 暗房黑+红（v1.1） | **冷紫+毛玻璃+深浅双模** | C 端年轻用户，Apple 原生质感 |
@@ -241,8 +247,10 @@ git checkout feature/v2.0-glassmorphism
 
 | 位置 | 路径 | 说明 |
 |------|------|------|
-| 模拟器相册（DCIM） | `~/Library/Developer/CoreSimulator/Devices/16BDA768...FEA/data/Media/DCIM/100APPLE/` | Photos.app 可看 |
-| App 临时下载 | `.../Library/Caches/Downloads/` | 仅中转，写入相册后自动删除 |
+| 媒体文件（文件 App） | `<App沙盒>/Documents/Media/` | 文件名「博主名_@账号_正文」，文件 App / Finder 可见 |
+| 模拟器沙盒 | `~/Library/Developer/CoreSimulator/Devices/16BDA768...FEA/data/Containers/Data/Application/<UUID>/Documents/Media/` | 直接 open 查看 |
+
+> v2.0 起不再存相册（DCIM），改存「文件」App。需开启 `UIFileSharingEnabled`（已配置）。
 
 ---
 
