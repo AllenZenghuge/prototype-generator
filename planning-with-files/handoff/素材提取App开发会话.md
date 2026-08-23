@@ -14,13 +14,13 @@
 | 2026-06-22 16:36:28 | 修正虚构时间：3 条 06-22 条目（01:30/01:45/02:00）均在文件系统 mtime 00:36:57 之后，合并为一条真实时间 |
 | 2026-08-09 00:00:00 | 全面审计：核对代码实际状态 vs 设计文档，从 mockup 提取权威色彩/材质值，识别文档缺口，新增 v2.0 实现路径和 Git 操作建议 |
 | 2026-08-10 00:00:00 | v2.0 代码实现完成：TDD 流程 17 文件改动、3 Tab 毛玻璃全页面落地、TC-V2-01~10 测试通过、后端 venv 配置、分支管理就绪 |
-| 2026-08-23 00:00:00 | 文件名三段式 + 存储策略改「文件」App；MediaExtractor 创建私有 GitHub 仓库并 push（main + feature + tag） |
+| 2026-08-23 00:00:00 | 文件名三段式 + 存储策略改「文件」App；MediaExtractor 创建私有仓库并 push；PR #1 合并 v2.0 进 main，打 v2.0 tag |
 
 ---
 
 ## 一句话总结
 
-iPhone App + Python 后端，实现对 X (Twitter) 推文的无水印视频/图片/文案提取。**v1.1 暗房主题位于 main 分支，v2.0 毛玻璃重设计代码已完成于 feature/v2.0-glassmorphism 分支，待合并。**
+iPhone App + Python 后端，实现对 X (Twitter) 推文的无水印视频/图片/文案提取。**v2.0 毛玻璃重设计已合并到 main 成为正式版；v1.1 暗房主题由 `v1.1-darkroom` tag 保留。**
 
 ---
 
@@ -29,7 +29,7 @@ iPhone App + Python 后端，实现对 X (Twitter) 推文的无水印视频/图�
 | 模块 | 版本 | 分支 | 状态 |
 |------|------|------|------|
 | **v1.1 暗房主题** | v1.1 | `main` | ✅ BUILD SUCCEEDED，26 后端测试全过 |
-| **v2.0 毛玻璃重设计** | v2.0 | `feature/v2.0-glassmorphism` | ✅ BUILD SUCCEEDED，10 新增测试全过 |
+| **v2.0 毛玻璃重设计** | v2.0 | `main` | ✅ 已合并，正式版 |
 | **后端** | — | 通用 | ✅ vxtwitter API + 代理 + venv |
 | **设计文档** | v2.0 | — | ✅ 决策记录 + 设计概要 + 23 mockup |
 
@@ -208,21 +208,21 @@ myapp/素材提取/
 
 | 分支/标签 | 内容 | 状态 |
 |----------|------|------|
-| `main` | v1.1 暗房主题基线 | ✅ 已 push（`4a61fa9`） |
+| `main` | v2.0 毛玻璃重设计（正式版） | ✅ 已 push（`b17209d` merge commit） |
 | `v1.1-darkroom` | v1.1 tag | ✅ 已 push |
-| `feature/v2.0-glassmorphism` | v2.0 毛玻璃 + 文件名三段式 + 文件 App 存储 | ✅ 已 push（`87083c2`），待合并 |
-| `v2.0-glassmorphism` | v2.0 tag | ⏸ 合并后打 |
+| `feature/v2.0-glassmorphism` | v2.0 开发分支 | ✅ 已合并进 main 并删除 |
+| `v2.0-glassmorphism` | v2.0 tag | ✅ 已 push |
 
 ```bash
 # 查看分支
 cd "myapp/素材提取/04-App源码/MediaExtractor"
 git branch -a
 
-# 克隆远程仓库
+# 克隆远程仓库（默认就是 v2.0 正式版）
 git clone https://github.com/AllenZenghuge/MediaExtractor.git
 
-# v2.0 开发在此分支
-git checkout feature/v2.0-glassmorphism
+# 回看 v1.1 暗房主题
+git checkout v1.1-darkroom
 ```
 
 ---
@@ -262,7 +262,7 @@ cd "myapp/素材提取/03-后端源码/backend"
 source venv/bin/activate
 HTTPS_PROXY=http://127.0.0.1:7897 python3 main.py
 
-# App：Xcode 打开 → 切换到 feature/v2.0-glassmorphism → Cmd+R
+# App：Xcode 打开 → Cmd+R（main 已是 v2.0 正式版）
 
 # 运行后端测试
 cd "myapp/素材提取/03-后端源码/backend"
@@ -278,7 +278,7 @@ python3 -m pytest tests/ -v
 - **所有 md 文件需有修订记录**：| 时间 | 修订内容 |
 - **mockup 只新建不覆盖**：每次迭代创建新文件
 - **TDD 铁律**：先写测试 → 看失败 → 写最少代码 → 编译通过
-- **原版不动，分支开发**：v2.0 在 `feature/v2.0-glassmorphism` 分支，v1.1 保留在 main
+- **开发用分支，主线稳定**：功能开发走 feature 分支，完成后 PR 合并进 main
 
 ---
 
