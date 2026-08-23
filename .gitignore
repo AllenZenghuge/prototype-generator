@@ -4,6 +4,9 @@ prototype/prototype.config.json
 prototype/shots/payload*.json
 prototype/shots/screenshot.b64
 
+# Auto Memory (file-based)
+memory/
+
 # OS
 .DS_Store
 __MACOSX/
@@ -47,3 +50,5 @@ planning-with-files/handoff/素材提取App开发会话.md
 .gstack/
 .superpowers/
 .vscode/
+.agents/
+.codex/
