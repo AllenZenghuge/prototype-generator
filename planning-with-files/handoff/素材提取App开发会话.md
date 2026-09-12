@@ -15,12 +15,14 @@
 | 2026-08-09 00:00:00 | 全面审计：核对代码实际状态 vs 设计文档，从 mockup 提取权威色彩/材质值，识别文档缺口，新增 v2.0 实现路径和 Git 操作建议 |
 | 2026-08-10 00:00:00 | v2.0 代码实现完成：TDD 流程 17 文件改动、3 Tab 毛玻璃全页面落地、TC-V2-01~10 测试通过、后端 venv 配置、分支管理就绪 |
 | 2026-08-23 00:00:00 | 文件名三段式 + 存储策略改「文件」App；MediaExtractor 创建私有仓库并 push；PR #1 合并 v2.0 进 main，打 v2.0 tag |
+| 2026-09-12 22:30:00 | 补记 08-24~09-12 三平台解析落地：X 直连 vxtwitter / 小红书抓 HTML / 抖音 WKWebView 借 JS 签名；App 端完全脱离 Python 后端；新增待验证事项与遗留问题 |
+| 2026-09-12 23:13:00 | 抖音真机验证通过：定位根因「移动 UA 被带到 iesdouyin 分享页，该页不请求 aweme/detail」，修复为伪装桌面 UA；错误提示加诊断串并支持长按复制 |
 
 ---
 
 ## 一句话总结
 
-iPhone App + Python 后端，实现对 X (Twitter) 推文的无水印视频/图片/文案提取。**v2.0 毛玻璃重设计已合并到 main 成为正式版；v1.1 暗房主题由 `v1.1-darkroom` tag 保留。**
+iPhone App（SwiftUI + SwiftData），实现 **X / 小红书 / 抖音** 三平台无水印视频/图片/文案提取。**App 端已完全本地直连解析，不再调用 Python 后端；v2.0 毛玻璃重设计为正式版，v1.1 暗房主题由 `v1.1-darkroom` tag 保留。**
 
 ---
 
@@ -28,9 +30,10 @@ iPhone App + Python 后端，实现对 X (Twitter) 推文的无水印视频/图�
 
 | 模块 | 版本 | 分支 | 状态 |
 |------|------|------|------|
-| **v1.1 暗房主题** | v1.1 | `main` | ✅ BUILD SUCCEEDED，26 后端测试全过 |
+| **v1.1 暗房主题** | v1.1 | tag `v1.1-darkroom` | ✅ 历史版本，保留可回看 |
 | **v2.0 毛玻璃重设计** | v2.0 | `main` | ✅ 已合并，正式版 |
-| **后端** | — | 通用 | ✅ vxtwitter API + 代理 + venv |
+| **三平台解析** | v2.1 | `main` | ✅ 三平台真机验证通过 |
+| **Python 后端** | — | `main` | ⚠️ 源码保留在 `03-后端源码/`，但 App 端已不再调用 |
 | **设计文档** | v2.0 | — | ✅ 决策记录 + 设计概要 + 23 mockup |
 
 ### v1.1 → v2.0 变更对照
@@ -133,6 +136,72 @@ TDD 驱动：先写测试 → 验证失败 → 写最少代码 → 编译通过 
 
 ---
 
+## 三平台解析（v2.1，✅ 三平台均已真机验证）
+
+时间跨度：2026-08-24 ~ 2026-09-12
+架构结果：**App 端完全本地直连解析，不再调用 Python 后端**（后端源码保留在 `03-后端源码/`，当前不参与运行）。
+
+| 平台 | 方案 | 关键点 |
+|------|------|--------|
+| **X** | 直连 `api.vxtwitter.com`（`VxTwitterParser`） | 下载直连 twimg.com；翻墙由手机 VPN 负责，后端不提供 |
+| **小红书** | 抓 HTML + 正则提取 `masterUrl`（`XhsParser`） | 无需签名；封面优先取 `imageList` 的 `urlDefault`（`og:image` 是平台默认图） |
+| **抖音** | 隐藏 WKWebView（**伪装桌面 UA**）+ 注入 JS hook 拦截 detail 响应（`DouyinWebParser`） | 借抖音自己的 JS 生成 `a_bogus` 签名；**必须伪装桌面 UA**，否则进不去会请求 detail 的 PC 版页面 |
+
+### 抖音方案：为什么用 WKWebView
+
+核心判断：`a_bogus` 签名由**抖音自己的 JS 生成**，自建算法约 300 行且每两周失效一次；借 JS 签名可随平台自动适配。
+
+流程：WKWebView 加载链接 → 抖音 JS 生成签名请求 detail → 注入 JS hook `XHR`/`fetch` 捕获响应 → `postMessage` 回 Swift → 取 `aweme_detail.video.play_addr.url_list[0]`（无水印）。首次解析 2-5 秒，25 秒超时兜底。
+
+### ⚠️ 关键坑：必须伪装桌面 UA（2026-09-12 定位并修复）
+
+**现象**：真机上抖音解析失败，提示「25 秒内未捕获到 aweme/detail 响应」。
+
+**根因**：移动 UA 下，**无论短链 `v.douyin.com/xxx` 还是完整链接 `www.douyin.com/video/{id}`**，WKWebView 最终都会落到 `www.iesdouyin.com/share/video/{id}` —— 移动端 reflow 分享页。该页是「打开抖音 App」引导页（`isAutoOpenApp: true`、`page_name: reflow_video`），其 JS 里 **0 处 `aweme/detail`**（只有 `aweme/v1/playwm`），hook 永远等不到响应，25 秒超时后返回 nil。
+
+**证据**：把分享页 7 个 JS chunk 全量下载并 grep，`aweme/detail` 出现 0 次；而桌面浏览器加载同一链接会进入 `www.douyin.com/video/{id}`，那里才请求 `aweme/v1/web/aweme/detail/`（实测 200）。
+
+**修复**：`webView.customUserAgent` 设为桌面 Chrome UA，让抖音返回 PC 版页面（见 `DouyinWebParser.desktopUserAgent`）。
+
+**诊断手段**：`DouyinWebParser.parse` 失败时返回诊断串（区分「超时 / 非 JSON / 无 aweme_detail 字段 / 取不到地址」四种环节，并带上 WebView 最终停留的 URL），由 `APIClient` 拼进错误提示，界面支持长按复制。**下次抖音再挂，先看这句里的 finalURL 判断页面落点。**
+
+### 抖音已排除方案（勿重复尝试）
+
+| 方案 | 失败原因 |
+|------|---------|
+| PC UA 抓 HTML | 空壳反爬（只有 2 个空 script） |
+| iPhone UA 抓 SSR 分享页 | 只有元数据，无视频地址 |
+| 移动端 `_ROUTER_DATA` | 没有该字段 |
+| aweme.snssdk.com 直链 | 用数字 ID 不返回直链 |
+| Chrome cookie（`s_v_web_id`）+ detail API | 返回空（**需要签名**，不只是 cookie） |
+| 第三方 API（小渡/lp8） | 需注册 Token/ckey |
+| 移动 UA 加载（短链、完整链接都一样） | 被带到 `iesdouyin.com/share/video/` 移动分享页，该页不请求 `aweme/detail` |
+
+### 本节变动文件
+
+| 类别 | 文件 | 内容 |
+|------|------|------|
+| 🆕 | `Services/MultiPlatformParser.swift` | `PlatformDetector` 平台识别 + `XhsParser` 小红书解析 + 正则辅助 |
+| 🆕 | `Services/VxTwitterParser.swift` | `VxTwitterResponse` 模型 + `TweetURLParser` + `VxTwitterConverter` |
+| 🆕 | `Services/DouyinWebParser.swift` | WKWebView 拦截抖音 detail 响应 |
+| 🆕 | `Utilities/URLParser.swift` | 从「文字+链接」分享文案中正则提取 URL |
+| ✏️ | `Services/APIClient.swift` | 由「调后端」改为「按平台本地路由」 |
+| ✏️ | `Info.plist` | 手动 Info.plist 修复 ATS（`NSAllowsArbitraryLoads`）+ 文件共享 |
+
+### 待验证事项
+
+| 编号 | 事项 | 说明 |
+|------|------|------|
+| ~~V-01~~ | ~~真机验证抖音~~ | ✅ 2026-09-12 真机通过（修复：伪装桌面 UA） |
+| V-02 | 小红书边界 | 纯图笔记、多图、需登录的笔记 |
+| V-03 | 抖音图集 | `DouyinWebParser` 已实现 `images` 字段分支，但从未实测 |
+
+### 遗留问题
+
+- `MultiPlatformParser.swift:156` 的 `enum DouyinParser`（早期 HTML + `playwm→play` 去水印方案）已无任何调用点，是被 `DouyinWebParser` 取代后的死代码（约 45 行），待清理。
+
+---
+
 ## v1.1 修改清单（2026-06-21 对话）
 
 ### Bug 修复
@@ -184,12 +253,12 @@ myapp/素材提取/
 │       ├── Views/
 │       │   ├── ContentView.swift      ← v2.0 3 Tab + 渐变光斑
 │       │   ├── Components/            ← 🆕 FloatingTabBar
-│       │   ├── Extract/               ← v2.0 冷紫+毛玻璃（8 文件）
+│       │   ├── Extract/               ← v2.0 冷紫+毛玻璃（9 文件）
 │       │   ├── DownloadList/          ← v2.0 毛玻璃卡片（3 文件）
 │       │   ├── Profile/               ← 🆕 C3 v4「我的」
 │       │   └── Settings/              ← 🆕 设置+登出+注销
-│       ├── Services/        ← 3 文件（APIClient、DownloadManager、PersistenceService）
-│       └── Utilities/       ← 4 文件（Color+Theme 双色板 + 3 辅助）
+│       ├── Services/        ← 6 文件（APIClient 多平台路由、MultiPlatformParser、DouyinWebParser、VxTwitterParser、DownloadManager、PersistenceService）
+│       └── Utilities/       ← 6 文件（Color+Theme 双色板 + URLParser/BatchDownloadBuilder/FilenameSanitizer/MediaStorage/PasteboardHelper）
 ├── 05-测试/
 │   ├── 测试计划.md
 │   ├── 后端测试/（Spec审查 + 测试用例）
@@ -208,17 +277,19 @@ myapp/素材提取/
 
 | 分支/标签 | 内容 | 状态 |
 |----------|------|------|
-| `main` | v2.0 毛玻璃重设计（正式版） | ✅ 已 push（`b17209d` merge commit） |
+| `main` | v2.0 毛玻璃 + 三平台解析（正式版） | ✅ 已 push（最新 `1d7bf7b`） |
 | `v1.1-darkroom` | v1.1 tag | ✅ 已 push |
 | `feature/v2.0-glassmorphism` | v2.0 开发分支 | ✅ 已合并进 main 并删除 |
 | `v2.0-glassmorphism` | v2.0 tag | ✅ 已 push |
+
+> ⚠️ 偏差记录：08-24 ~ 09-12 的三平台改动（`5b60891` ~ `1d7bf7b`，共 8 个 commit）**直接提交在 `main` 上**，未走 feature 分支，与下方会话规则「开发用分支，主线稳定」不符。后续开发建议恢复分支流程。
 
 ```bash
 # 查看分支
 cd "myapp/素材提取/04-App源码/MediaExtractor"
 git branch -a
 
-# 克隆远程仓库（默认就是 v2.0 正式版）
+# 克隆远程仓库（默认即最新正式版：v2.0 + 三平台）
 git clone https://github.com/AllenZenghuge/MediaExtractor.git
 
 # 回看 v1.1 暗房主题
@@ -240,6 +311,9 @@ git checkout v1.1-darkroom
 | 视觉风格（v2.0） | 暗房黑+红（v1.1） | **冷紫+毛玻璃+深浅双模** | C 端年轻用户，Apple 原生质感 |
 | 导航结构（v2.0） | 单页 NavigationStack | **3 Tab 悬浮胶囊** | 提取/下载/我的 三个入口 |
 | 代码策略（v2.0） | 直接改 main | **独立 feature 分支 + TDD** | 原版 v1.1 不动，按 TDD 流程开发 |
+| 后端角色（v2.1） | App 调 Python 后端 | **App 端完全本地直连** | 龙哥明确「翻墙是用户手机 VPN 的事，后端不提供翻墙」；三平台解析均可客户端完成 |
+| 抖音解析（v2.1） | 抓 HTML / 自建 `a_bogus` 签名 | **WKWebView 借抖音 JS 签名** | 自建约 300 行且每两周失效，借 JS 签名自动适配 |
+| 上架架构（远期） | — | **X 直连 + 小红书/抖音走后端** | 国内服务器不翻墙，规避 App 内 WebView 抓取风险 |
 
 ---
 
@@ -257,12 +331,14 @@ git checkout v1.1-darkroom
 ## 启动命令
 
 ```bash
-# 后端（Mac 开发，带代理，需先激活 venv）
+# App（当前唯一运行入口）：Xcode 打开 → Cmd+R
+# 路径：myapp/素材提取/04-App源码/MediaExtractor（main = v2.0 + 三平台正式版）
+# X 需手机 VPN；小红书/抖音国内直连，无需 VPN。
+
+# 后端（⚠️ App 已不再调用，仅历史参考 / 跑后端测试用）
 cd "myapp/素材提取/03-后端源码/backend"
 source venv/bin/activate
 HTTPS_PROXY=http://127.0.0.1:7897 python3 main.py
-
-# App：Xcode 打开 → Cmd+R（main 已是 v2.0 正式版）
 
 # 运行后端测试
 cd "myapp/素材提取/03-后端源码/backend"
@@ -285,11 +361,13 @@ python3 -m pytest tests/ -v
 ## 当前环境
 
 - macOS Darwin 24.6.0 / Python 3.8.3
-- Xcode 26.3 (17C529) beta — 模拟器 CLI 不稳定
+- Xcode 26.3 (17C529) beta — 模拟器 CLI 不稳定，单测用 Xcode Cmd+U
 - 代理: `127.0.0.1:7897` (Clash/V2Ray)
+- 网络：**X 需手机 VPN**；小红书/抖音为国内平台，无需 VPN
 - iOS Simulator: iPhone 17 (iOS 26.3.1), UDID `16BDA768-4290-437E-BC96-98A417347FEA`
 - App 数据容器 UUID: `88C01D00-1A73-4527-ACD4-F8F8772EBEBF`
 - 后端 venv: `myapp/素材提取/03-后端源码/backend/venv/`
+- git 推送：有代理时走 `127.0.0.1:7897`，代理未开时直连 push：`git -c http.proxy= -c https.proxy= push`
 
 ---
 
