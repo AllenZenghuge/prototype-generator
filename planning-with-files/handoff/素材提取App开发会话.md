@@ -17,6 +17,7 @@
 | 2026-08-23 00:00:00 | 文件名三段式 + 存储策略改「文件」App；MediaExtractor 创建私有仓库并 push；PR #1 合并 v2.0 进 main，打 v2.0 tag |
 | 2026-09-12 22:30:00 | 补记 08-24~09-12 三平台解析落地：X 直连 vxtwitter / 小红书抓 HTML / 抖音 WKWebView 借 JS 签名；App 端完全脱离 Python 后端；新增待验证事项与遗留问题 |
 | 2026-09-12 23:13:00 | 抖音真机验证通过：定位根因「移动 UA 被带到 iesdouyin 分享页，该页不请求 aweme/detail」，修复为伪装桌面 UA；错误提示加诊断串并支持长按复制 |
+| 2026-09-12 23:24:00 | 抖音图文作品（note）真机验证通过：定位 `/note/` 路径不请求 detail，修复为导航拦截改写 `/video/{id}`；V-03 完成；修正 `_ROUTER_DATA` 描述 |
 
 ---
 
@@ -165,17 +166,28 @@ TDD 驱动：先写测试 → 验证失败 → 写最少代码 → 编译通过 
 
 **诊断手段**：`DouyinWebParser.parse` 失败时返回诊断串（区分「超时 / 非 JSON / 无 aweme_detail 字段 / 取不到地址」四种环节，并带上 WebView 最终停留的 URL），由 `APIClient` 拼进错误提示，界面支持长按复制。**下次抖音再挂，先看这句里的 finalURL 判断页面落点。**
 
+### ⚠️ 关键坑 ②：图文作品必须改写 `/note/` → `/video/`（2026-09-12 修复）
+
+**现象**：视频链接修好后，图文作品（图集）仍报「25 秒内未捕获到 aweme/detail 响应；WebView 最终停留于 `https://www.douyin.com/note/7683370298066856305`」。
+
+**根因**：图文作品走 `/note/{id}` 路径，**该路径在 PC 端不请求 `aweme/detail`，页面也不渲染内容**；同一个作品 ID 换成 `/video/{id}` 就会正常调用详情接口。
+
+**证据**：同一作品 ID 分别加载 `/note/{id}` 与 `/video/{id}` 抓网络 —— 前者的 aweme 接口里**没有 `detail`**（只有 `aweme/post`、`aweme/related`），后者有 `aweme/v1/web/aweme/detail/`。
+
+**修复**：`DouyinWebParser` 实现 `WKNavigationDelegate`，导航过程中 URL 只要含 `/note/` 就取消并改写为 `https://www.douyin.com/video/{id}` 重新加载。对短链和完整链接都透明。
+
 ### 抖音已排除方案（勿重复尝试）
 
 | 方案 | 失败原因 |
 |------|---------|
 | PC UA 抓 HTML | 空壳反爬（只有 2 个空 script） |
 | iPhone UA 抓 SSR 分享页 | 只有元数据，无视频地址 |
-| 移动端 `_ROUTER_DATA` | 没有该字段 |
+| 移动端 `_ROUTER_DATA` | 字段其实**存在**，但只有 webId/itemId 等壳数据，无视频地址 |
 | aweme.snssdk.com 直链 | 用数字 ID 不返回直链 |
 | Chrome cookie（`s_v_web_id`）+ detail API | 返回空（**需要签名**，不只是 cookie） |
 | 第三方 API（小渡/lp8） | 需注册 Token/ckey |
 | 移动 UA 加载（短链、完整链接都一样） | 被带到 `iesdouyin.com/share/video/` 移动分享页，该页不请求 `aweme/detail` |
+| 图文作品走 `/note/{id}` 路径 | PC 端既不请求 `aweme/detail`、也不渲染内容，须改写为 `/video/{id}` |
 
 ### 本节变动文件
 
@@ -194,7 +206,7 @@ TDD 驱动：先写测试 → 验证失败 → 写最少代码 → 编译通过 
 |------|------|------|
 | ~~V-01~~ | ~~真机验证抖音~~ | ✅ 2026-09-12 真机通过（修复：伪装桌面 UA） |
 | V-02 | 小红书边界 | 纯图笔记、多图、需登录的笔记 |
-| V-03 | 抖音图集 | `DouyinWebParser` 已实现 `images` 字段分支，但从未实测 |
+| ~~V-03~~ | ~~抖音图集~~ | ✅ 2026-09-12 真机通过（修复：`/note/` 改写为 `/video/`） |
 
 ### 遗留问题
 
