@@ -18,6 +18,7 @@
 | 2026-09-12 22:30:00 | 补记 08-24~09-12 三平台解析落地：X 直连 vxtwitter / 小红书抓 HTML / 抖音 WKWebView 借 JS 签名；App 端完全脱离 Python 后端；新增待验证事项与遗留问题 |
 | 2026-09-12 23:13:00 | 抖音真机验证通过：定位根因「移动 UA 被带到 iesdouyin 分享页，该页不请求 aweme/detail」，修复为伪装桌面 UA；错误提示加诊断串并支持长按复制 |
 | 2026-09-12 23:24:00 | 抖音图文作品（note）真机验证通过：定位 `/note/` 路径不请求 detail，修复为导航拦截改写 `/video/{id}`；V-03 完成；修正 `_ROUTER_DATA` 描述 |
+| 2026-09-13 11:57:00 | 补记后续两轮：代码审计发现的 5 个下载链路 bug 修复 + 死代码清理；图片缓存（修切 Tab 重新加载）/视频点击播放/剪贴板自动识别/Tab Bar 对比度/相册命名统一；补 CLI 测试环境说明 |
 
 ---
 
@@ -210,7 +211,55 @@ TDD 驱动：先写测试 → 验证失败 → 写最少代码 → 编译通过 
 
 ### 遗留问题
 
-- `MultiPlatformParser.swift:156` 的 `enum DouyinParser`（早期 HTML + `playwm→play` 去水印方案）已无任何调用点，是被 `DouyinWebParser` 取代后的死代码（约 45 行），待清理。
+- ~~`MultiPlatformParser.swift:156` 的 `enum DouyinParser` 死代码~~ ✅ 2026-09-12 已删除（48 行）
+
+---
+
+## 结果页与交互优化（2026-09-12 ~ 09-13）
+
+分支：`main`（commit `7906605`、`90ae8ec`）
+
+### 下载链路修复（`7906605`）
+
+上一轮代码审计发现的 5 个真 bug，全部核实后修复：
+
+| 问题 | 修复 |
+|------|------|
+| 多文件任务续下时用裸 URL，丢了 Referer/UA | 改用 `Self.authorizedRequest(for:)`，修复打包下载从第 2 张起 403 |
+| 相册保存失败被 `{ _, _ in }` 静默吞掉 | 保留临时文件 + 写回失败原因 |
+| 重新下载取 `newURLs.first`，新记录只带 1 个 URL | 改用全量 `newURLs` |
+| URLSession 后台队列直接改 SwiftData `mainContext` | `delegateQueue` 改 `.main` |
+| `DouyinWebParser` 单槽位无重入保护 | 补 `guard continuation == nil` + 取消超时 Task |
+
+同时清理死代码：无 observer 的通知、`retryDownload`、冗余重载、`Platform.displayName`、v1.1 色板 7 常量；强解包改 guard；「补 https://」统一到 `PlatformDetector.normalizedURLString`；`ExtractView.saveBar` 两分支合并。
+
+### 交互与结果页（`90ae8ec`）
+
+| 改动 | 说明 |
+|------|------|
+| **图片缓存** | 新增 `CachedAsyncImage` + `ImageMemoryCache`。切底部 Tab / 切结果分栏会重建视图，`AsyncImage` 随之重新发请求退回占位图（表现为「图片每次都重新加载」）；改为命中内存缓存时同步出图 |
+| **视频点击播放** | 视频分栏点击缩略图全屏播放；`AVPlayer` 用 `@State` 持有，避免 body 重算重置播放 |
+| **保存后自动切下载列表** | `onBatchDownloaded` 更名 `onDownloadStarted`，语义涵盖单条保存 |
+| **剪贴板自动识别** | 恢复设置页开关并**实现功能**：`AppSettings` + `@AppStorage` 持久化，启动时按设置读取剪贴板（静态标记保证每生命周期一次） |
+| **相册命名统一** | 相册资源设 `originalFilename`，与「文件」App 命名规则一致 |
+| **Tab Bar 对比度** | 浅色模式叠白提亮，避免身后深色图片导致未选中项看不清 |
+| **文案** | 输入框占位「粘贴分享的链接」；引导步骤一「在各平台中点击分享按钮」 |
+
+### 本轮新增文件
+
+| 文件 | 内容 |
+|------|------|
+| `Models/AppSettings.swift` | 设置项持久化（`autoDetectClipboard`） |
+| `Utilities/ImageMemoryCache.swift` | 图片内存缓存（NSCache） |
+| `Views/Components/CachedAsyncImage.swift` | 带缓存的异步图片视图 |
+
+### 新增测试
+
+`TC-ALBUM-01~03`、`TC-SETTINGS-01~02`、`TC-CACHE-01~03`，均按先红后绿流程验证。
+
+### 解析后的白屏修复（`90ae8ec` 之前）
+
+去掉 `TabView(.page)` 换成 `switch` 后暴露了一个既有 bug：`selectedTab` 默认 `.video` 且解析成功后从不更新，图文笔记（无视频）会落到空分支渲染白屏。已改为解析后选中第一个可用分栏。
 
 ---
 
@@ -260,17 +309,17 @@ myapp/素材提取/
 ├── 04-App源码/
 │   └── MediaExtractor/
 │       ├── App/MediaExtractorApp.swift
-│       ├── Models/          ← 5 文件
+│       ├── Models/          ← 6 文件
 │       ├── ViewModels/      ← 2 文件
 │       ├── Views/
 │       │   ├── ContentView.swift      ← v2.0 3 Tab + 渐变光斑
-│       │   ├── Components/            ← 🆕 FloatingTabBar
+│       │   ├── Components/            ← 🆕 FloatingTabBar + CachedAsyncImage
 │       │   ├── Extract/               ← v2.0 冷紫+毛玻璃（9 文件）
 │       │   ├── DownloadList/          ← v2.0 毛玻璃卡片（3 文件）
 │       │   ├── Profile/               ← 🆕 C3 v4「我的」
 │       │   └── Settings/              ← 🆕 设置+登出+注销
 │       ├── Services/        ← 6 文件（APIClient 多平台路由、MultiPlatformParser、DouyinWebParser、VxTwitterParser、DownloadManager、PersistenceService）
-│       └── Utilities/       ← 6 文件（Color+Theme 双色板 + URLParser/BatchDownloadBuilder/FilenameSanitizer/MediaStorage/PasteboardHelper）
+│       └── Utilities/       ← 7 文件（Color+Theme 双色板 + URLParser/BatchDownloadBuilder/FilenameSanitizer/MediaStorage/PasteboardHelper/ImageMemoryCache）
 ├── 05-测试/
 │   ├── 测试计划.md
 │   ├── 后端测试/（Spec审查 + 测试用例）
@@ -347,6 +396,14 @@ git checkout v1.1-darkroom
 # 路径：myapp/素材提取/04-App源码/MediaExtractor（main = v2.0 + 三平台正式版）
 # X 需手机 VPN；小红书/抖音国内直连，无需 VPN。
 
+# 跑单元测试（UDID 用 xcrun simctl list devices 现查）
+cd "myapp/素材提取/04-App源码/MediaExtractor"
+xcodebuild -project MediaExtractor.xcodeproj -scheme MediaExtractor \
+  -destination 'platform=iOS Simulator,id=<UDID>' -parallel-testing-enabled NO \
+  test -only-testing:MediaExtractorTests
+# 注意：CLI 测试环境间歇性不稳（launch failed / 0 tests），失败重跑通常就好；
+# 全量 test 末尾常报 TEST FAILED 却无失败用例（UI 测试 target 启动问题），只看 Test Suite 级结果。
+
 # 后端（⚠️ App 已不再调用，仅历史参考 / 跑后端测试用）
 cd "myapp/素材提取/03-后端源码/backend"
 source venv/bin/activate
@@ -376,7 +433,7 @@ python3 -m pytest tests/ -v
 - Xcode 26.3 (17C529) beta — 模拟器 CLI 不稳定，单测用 Xcode Cmd+U
 - 代理: `127.0.0.1:7897` (Clash/V2Ray)
 - 网络：**X 需手机 VPN**；小红书/抖音为国内平台，无需 VPN
-- iOS Simulator: iPhone 17 (iOS 26.3.1), UDID `16BDA768-4290-437E-BC96-98A417347FEA`
+- iOS Simulator: iPhone 17 (iOS 26.3), UDID `2B4E795D-72B8-451D-A69C-7268DF7BB35E`（**UDID 会变，用 `xcrun simctl list devices` 现查**）
 - App 数据容器 UUID: `88C01D00-1A73-4527-ACD4-F8F8772EBEBF`
 - 后端 venv: `myapp/素材提取/03-后端源码/backend/venv/`
 - git 推送：有代理时走 `127.0.0.1:7897`，代理未开时直连 push：`git -c http.proxy= -c https.proxy= push`
