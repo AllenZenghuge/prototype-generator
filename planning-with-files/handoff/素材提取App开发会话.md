@@ -19,6 +19,7 @@
 | 2026-09-12 23:13:00 | 抖音真机验证通过：定位根因「移动 UA 被带到 iesdouyin 分享页，该页不请求 aweme/detail」，修复为伪装桌面 UA；错误提示加诊断串并支持长按复制 |
 | 2026-09-12 23:24:00 | 抖音图文作品（note）真机验证通过：定位 `/note/` 路径不请求 detail，修复为导航拦截改写 `/video/{id}`；V-03 完成；修正 `_ROUTER_DATA` 描述 |
 | 2026-09-13 11:57:00 | 补记后续两轮：代码审计发现的 5 个下载链路 bug 修复 + 死代码清理；图片缓存（修切 Tab 重新加载）/视频点击播放/剪贴板自动识别/Tab Bar 对比度/相册命名统一；补 CLI 测试环境说明 |
+| 2026-09-13 14:31:00 | 视频改为卡片内播放 + 全屏按钮，并修播放防盗链（抖音 403）；缩略图固定高度；图片分栏点击即选中；确认「说明」字段的 JSON 为小红书原图 EXIF，不处理 |
 
 ---
 
@@ -238,7 +239,9 @@ TDD 驱动：先写测试 → 验证失败 → 写最少代码 → 编译通过 
 | 改动 | 说明 |
 |------|------|
 | **图片缓存** | 新增 `CachedAsyncImage` + `ImageMemoryCache`。切底部 Tab / 切结果分栏会重建视图，`AsyncImage` 随之重新发请求退回占位图（表现为「图片每次都重新加载」）；改为命中内存缓存时同步出图 |
-| **视频点击播放** | 视频分栏点击缩略图全屏播放；`AVPlayer` 用 `@State` 持有，避免 body 重算重置播放 |
+| **视频播放** | 点缩略图**在卡片内播放**，右下角提供全屏按钮（不再直接进全屏）；缩略图固定 200pt 高居中裁剪（竖版视频按原比例会被拉得极长）；进全屏时暂停内联播放，避免两个播放器同时出声 |
+| **播放防盗链** | 抖音/小红书 CDN 需要 Referer，**下载侧早就有、播放侧没有** → 抖音视频卡片内播放 403（X 的 twimg 不防盗链，所以只有抖音中招）。AVFoundation 无设置 HTTP 头的公开接口，新增 `AuthorizedAssetLoader`（自定义 scheme + `AVAssetResourceLoaderDelegate`）代理请求补头。⚠️ `setDelegate` 是弱引用，loader 须由 `PlaybackHandle` 强持有 |
+| **图片分栏点击** | 点图片本身即切换选中，不必去够右上角勾选框 |
 | **保存后自动切下载列表** | `onBatchDownloaded` 更名 `onDownloadStarted`，语义涵盖单条保存 |
 | **剪贴板自动识别** | 恢复设置页开关并**实现功能**：`AppSettings` + `@AppStorage` 持久化，启动时按设置读取剪贴板（静态标记保证每生命周期一次） |
 | **相册命名统一** | 相册资源设 `originalFilename`，与「文件」App 命名规则一致 |
@@ -251,7 +254,12 @@ TDD 驱动：先写测试 → 验证失败 → 写最少代码 → 编译通过 
 |------|------|
 | `Models/AppSettings.swift` | 设置项持久化（`autoDetectClipboard`） |
 | `Utilities/ImageMemoryCache.swift` | 图片内存缓存（NSCache） |
+| `Utilities/AuthorizedAssetLoader.swift` | 播放侧防盗链代理（自定义 scheme + resource loader 补 Referer） |
 | `Views/Components/CachedAsyncImage.swift` | 带缓存的异步图片视图 |
+
+### 已确认不处理
+
+图片「说明」字段里出现的 JSON（`{"capa_image_quality_process_sink_v2":"1",...,"DeviceModel":"iPhone18,2"}`）是**小红书写入原图的 EXIF 元数据**，跟下载链路无关。判定依据：同一批图**有的有、有的没有**（若是我们的代码必然一致），且删除后无任何影响。清除它只能重新编码图片、牺牲画质，不值得。
 
 ### 新增测试
 
@@ -319,7 +327,7 @@ myapp/素材提取/
 │       │   ├── Profile/               ← 🆕 C3 v4「我的」
 │       │   └── Settings/              ← 🆕 设置+登出+注销
 │       ├── Services/        ← 6 文件（APIClient 多平台路由、MultiPlatformParser、DouyinWebParser、VxTwitterParser、DownloadManager、PersistenceService）
-│       └── Utilities/       ← 7 文件（Color+Theme 双色板 + URLParser/BatchDownloadBuilder/FilenameSanitizer/MediaStorage/PasteboardHelper/ImageMemoryCache）
+│       └── Utilities/       ← 8 文件（Color+Theme 双色板 + URLParser/BatchDownloadBuilder/FilenameSanitizer/MediaStorage/PasteboardHelper/ImageMemoryCache/AuthorizedAssetLoader）
 ├── 05-测试/
 │   ├── 测试计划.md
 │   ├── 后端测试/（Spec审查 + 测试用例）
