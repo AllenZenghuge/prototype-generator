@@ -20,6 +20,7 @@
 | 2026-09-12 23:24:00 | 抖音图文作品（note）真机验证通过：定位 `/note/` 路径不请求 detail，修复为导航拦截改写 `/video/{id}`；V-03 完成；修正 `_ROUTER_DATA` 描述 |
 | 2026-09-13 11:57:00 | 补记后续两轮：代码审计发现的 5 个下载链路 bug 修复 + 死代码清理；图片缓存（修切 Tab 重新加载）/视频点击播放/剪贴板自动识别/Tab Bar 对比度/相册命名统一；补 CLI 测试环境说明 |
 | 2026-09-13 14:31:00 | 视频改为卡片内播放 + 全屏按钮，并修播放防盗链（抖音 403）；缩略图固定高度；图片分栏点击即选中；确认「说明」字段的 JSON 为小红书原图 EXIF，不处理。**订正**：播放代理只对抖音启用——小红书视频原本就能播（预签名 URL），不该改动 |
+| 2026-09-13 15:56:00 | 抖音播放补齐 contentInformationRequest；**回退**相册 originalFilename（引发保存失败）；重新下载改为弹窗选位置 + 即时反馈，抽出 SaveDestinationFlow/Picker 共用；下载列表错误提示可复制。发现 Xcode 26 会静默跳过 @MainActor 同步测试方法 |
 
 ---
 
@@ -240,7 +241,10 @@ TDD 驱动：先写测试 → 验证失败 → 写最少代码 → 编译通过 
 |------|------|
 | **图片缓存** | 新增 `CachedAsyncImage` + `ImageMemoryCache`。切底部 Tab / 切结果分栏会重建视图，`AsyncImage` 随之重新发请求退回占位图（表现为「图片每次都重新加载」）；改为命中内存缓存时同步出图 |
 | **视频播放** | 点缩略图**在卡片内播放**，右下角提供全屏按钮（不再直接进全屏）；缩略图固定 200pt 高居中裁剪（竖版视频按原比例会被拉得极长）；进全屏时暂停内联播放，避免两个播放器同时出声 |
-| **播放防盗链** | 抖音 CDN 需要 Referer，**下载侧早就有、播放侧没有** → 抖音视频卡片内播放 403（X 的 twimg 不防盗链，所以只有抖音中招）。AVFoundation 无设置 HTTP 头的公开接口，新增 `AuthorizedAssetLoader`（自定义 scheme + `AVAssetResourceLoaderDelegate`）代理请求补头。**只对抖音启用**——小红书视频是预签名 URL、实测一直能直接播，不要给它套代理。⚠️ `setDelegate` 是弱引用，loader 须由 `PlaybackHandle` 强持有 |
+| **播放防盗链** | 抖音 CDN 需要 Referer，**下载侧早就有、播放侧没有** → 抖音视频卡片内播放 403（X 的 twimg 不防盗链，所以只有抖音中招）。AVFoundation 无设置 HTTP 头的公开接口，新增 `AuthorizedAssetLoader`（自定义 scheme + `AVAssetResourceLoaderDelegate`）代理请求补头。**只对抖音启用**——小红书视频是预签名 URL、实测一直能直接播，不要给它套代理。⚠️ `setDelegate` 是弱引用，loader 须由 `PlaybackHandle` 强持有；⚠️ **还必须填 `contentInformationRequest`**（AVFoundation 取流前先发「内容信息」请求，此时 `dataRequest` 为 nil，不填播放器拿不到媒体类型/长度 → 仍播不了） |
+| **相册保存命名** | ❌ 已回退。给相册资源设 `originalFilename` 会让相册按扩展名校验格式，不被支持时 `addResource` 直接失败（`PHPhotosError 3302`），表现为「保存到相册失败」。**系统不设该属性时会自己按内容推断，反而稳**。文件名规则函数 `DownloadManager.albumOriginalFilename` 及对应测试已删除 |
+| **重新下载** | 点「重新下载」先弹窗选保存位置（与首次下载一致），并**立即把状态改为处理中**——重新解析要走网络，不改状态用户会以为点了没反应。选位置流程抽成 `SaveDestinationFlow` + `SaveDestinationPicker`，提取页与下载列表共用 |
+| **下载列表错误提示** | 支持长按复制 |
 | **图片分栏点击** | 点图片本身即切换选中，不必去够右上角勾选框 |
 | **保存后自动切下载列表** | `onBatchDownloaded` 更名 `onDownloadStarted`，语义涵盖单条保存 |
 | **剪贴板自动识别** | 恢复设置页开关并**实现功能**：`AppSettings` + `@AppStorage` 持久化，启动时按设置读取剪贴板（静态标记保证每生命周期一次） |
@@ -253,9 +257,11 @@ TDD 驱动：先写测试 → 验证失败 → 写最少代码 → 编译通过 
 | 文件 | 内容 |
 |------|------|
 | `Models/AppSettings.swift` | 设置项持久化（`autoDetectClipboard`） |
+| `ViewModels/SaveDestinationFlow.swift` | 「先选保存位置，再执行」的状态机（提取页与下载列表共用） |
 | `Utilities/ImageMemoryCache.swift` | 图片内存缓存（NSCache） |
-| `Utilities/AuthorizedAssetLoader.swift` | 播放侧防盗链代理（自定义 scheme + resource loader 补 Referer） |
+| `Utilities/AuthorizedAssetLoader.swift` | 播放侧防盗链代理（自定义 scheme + resource loader 补 Referer 与内容信息） |
 | `Views/Components/CachedAsyncImage.swift` | 带缓存的异步图片视图 |
+| `Views/Components/SaveDestinationPicker.swift` | 位置选项弹窗 + 目录选择器（挂在 SaveDestinationFlow 上） |
 
 ### 已确认不处理
 
@@ -318,10 +324,10 @@ myapp/素材提取/
 │   └── MediaExtractor/
 │       ├── App/MediaExtractorApp.swift
 │       ├── Models/          ← 6 文件
-│       ├── ViewModels/      ← 2 文件
+│       ├── ViewModels/      ← 3 文件（+ SaveDestinationFlow）
 │       ├── Views/
 │       │   ├── ContentView.swift      ← v2.0 3 Tab + 渐变光斑
-│       │   ├── Components/            ← 🆕 FloatingTabBar + CachedAsyncImage
+│       │   ├── Components/            ← 🆕 FloatingTabBar + CachedAsyncImage + SaveDestinationPicker
 │       │   ├── Extract/               ← v2.0 冷紫+毛玻璃（9 文件）
 │       │   ├── DownloadList/          ← v2.0 毛玻璃卡片（3 文件）
 │       │   ├── Profile/               ← 🆕 C3 v4「我的」
@@ -411,6 +417,8 @@ xcodebuild -project MediaExtractor.xcodeproj -scheme MediaExtractor \
   test -only-testing:MediaExtractorTests
 # 注意：CLI 测试环境间歇性不稳（launch failed / 0 tests），失败重跑通常就好；
 # 全量 test 末尾常报 TEST FAILED 却无失败用例（UI 测试 target 启动问题），只看 Test Suite 级结果。
+# ⚠️ 测试方法不要用 @MainActor 同步标注（类级/方法级都一样）：Xcode 26 会静默跳过，
+#    显示 Executed 0 tests 且状态 passed。用 async + await MainActor.run { } 代替。
 
 # 后端（⚠️ App 已不再调用，仅历史参考 / 跑后端测试用）
 cd "myapp/素材提取/03-后端源码/backend"
