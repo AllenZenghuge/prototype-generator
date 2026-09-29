@@ -30,7 +30,23 @@ docs/superpowers/specs/20260614_v1.0_素材提取App设计.md
 agentmemory-usage.md
 ai_call.py
 backend/
-myapp/
+# myapp 下默认全部忽略；只放行「素材提取」的 Markdown 文档
+# ⚠️ git 不会遍历被排除的目录，所以父级必须**逐级**放行，否则末尾的 ! 规则无效
+myapp/*
+!myapp/素材提取/
+myapp/素材提取/*
+!myapp/素材提取/01-设计/
+!myapp/素材提取/02-实现计划/
+!myapp/素材提取/05-测试/
+!myapp/素材提取/05-测试/App测试/
+!myapp/素材提取/05-测试/后端测试/
+!myapp/素材提取/06-前端重设计/
+myapp/素材提取/01-设计/*
+myapp/素材提取/02-实现计划/*
+myapp/素材提取/05-测试/App测试/*
+myapp/素材提取/05-测试/后端测试/*
+myapp/素材提取/06-前端重设计/*
+!myapp/素材提取/**/*.md
 web2md/
 20260605_ES发票数据查询可行性调研*.md
 
