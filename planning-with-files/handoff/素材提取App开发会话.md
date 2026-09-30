@@ -41,6 +41,7 @@ source: 会话整理
 | 2026-09-29 00:00:00 | 补记图集与实况照片（09-14 ~ 09-29，26 个 commit）：图集区分「静态图 / 实况照片 / 独立视频片段」；实况照片合成（`LivePhotoBuilder`）真机通过、含声音、1 张与 50 张均正常；合并成一个视频；重新下载按项定位；相册越权读取导致 TCC 崩溃的修复与防回归。稳定 tag `livephoto-stable` |
 | 2026-09-30 00:00:00 | 小红书图集支持实况照片（字段与抖音不同：`urlDefault` / `livePhoto` / `stream.h264[0].masterUrl`）；修掉图集伴随片段被误当「笔记视频」导致的多余「视频」分栏；全量 31 个单测通过。改动在分支 `feature/xhs-live-photo` |
 | 2026-09-30 12:00:00 | 真机验证通过（3 张实况正常、无多余「视频」分栏）→ 合并进 `main`（`48e43df`，`--no-ff`）并打 tag `v2.3-xhs-livephoto-stable`；顺带清掉 `main` 上遗留的临时诊断；文档补齐至当前状态 |
+| 2026-09-30 13:00:00 | 修掉编译器警告所指出的真 bug：小红书解析的「至少要有视频或图片」守卫把局部非可选数组与 nil 比较、恒为真，登录墙/反爬壳页会返回一份全空的 `ParseData` 冒充解析成功。`main` = `778a533`；全量 33 个单测通过、编译零代码警告 |
 
 ---
 
@@ -465,13 +466,14 @@ myapp/素材提取/
 
 | 分支/标签 | 内容 | 状态 |
 |----------|------|------|
-| `main` | v2.0 毛玻璃 + 三平台 + 图集/实况照片 + 小红书实况（正式版） | ✅ 已 push（最新 `48e43df`） |
+| `main` | v2.0 毛玻璃 + 三平台 + 图集/实况照片 + 小红书实况（正式版） | ✅ 已 push（最新 `778a533`） |
 | `v1.1-darkroom` | v1.1 tag | ✅ 已 push |
 | `v2.0-glassmorphism` | v2.0 tag | ✅ 已 push |
 | `livephoto-stable` | 实况照片完成版 tag（`e45d2c1`） | ✅ 已 push |
 | `v2.3-xhs-livephoto-stable` | 小红书实况照片完成版 tag（`48e43df`） | ✅ 已 push |
 | `feature/v2.0-glassmorphism` | v2.0 开发分支 | ✅ 已合并进 main 并删除 |
 | `feature/xhs-live-photo` | 小红书实况照片 + 假视频修复 | ✅ 已合并进 main（分支按要求保留） |
+| `fix/xhs-empty-parse-guard` | 修小红书解析守卫从未生效（编译器警告所指） | ✅ 已合并进 main（保留） |
 
 > ⚠️ 偏差记录：08-24 ~ 09-29 的改动（三平台解析 → 图集与实况照片，`5b60891` ~ `e45d2c1`）**大部分直接提交在 `main` 上**，未走 feature 分支，与下方会话规则「开发用分支，主线稳定」不符。09-30 的小红书实况已恢复分支流程（`feature/xhs-live-photo` → `--no-ff` 合并）。
 
@@ -577,7 +579,7 @@ python3 -m pytest tests/ -v
 - 网络：**X 需手机 VPN**；小红书/抖音为国内平台，无需 VPN
 - iOS Simulator: iPhone 17 (iOS 26.3), UDID `2B4E795D-72B8-451D-A69C-7268DF7BB35E`（**UDID 会变，用 `xcrun simctl list devices` 现查**）
 - App 数据容器 UUID: `88C01D00-1A73-4527-ACD4-F8F8772EBEBF`
-- 单元测试：**31 个**（2 个 `VideoMerger` 用例在模拟器跳过）
+- 单元测试：**33 个**（2 个 `VideoMerger` 用例在模拟器跳过）
 - 后端 venv: `myapp/素材提取/03-后端源码/backend/venv/`
 - git 推送：有代理时走 `127.0.0.1:7897`，代理未开时直连 push：`git -c http.proxy= -c https.proxy= push`
 - **本地验证 iOS 媒体逻辑的办法**：把纯媒体工具（`LivePhotoBuilder.swift` / `VideoMerger.swift`）+ 一个 `main.swift` 用
