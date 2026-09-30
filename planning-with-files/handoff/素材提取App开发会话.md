@@ -1,3 +1,19 @@
+---
+title: 素材提取 App — 会话交接
+date: 2026-09-30
+tags:
+  - MediaExtractor
+  - 会话交接
+  - SwiftUI
+  - 实况照片
+  - 真机验证
+aliases:
+  - 素材提取App交接
+  - MediaExtractor Handoff
+description: MediaExtractor（素材提取）iPhone App 的会话交接文档：v1.0~v2.3 的设计决策、前端重设计、三平台解析方案、图集与实况照片合成、小红书实况、相册权限与播放防盗链等踩坑记录，以及项目结构、Git 分支标签、启动命令与当前环境。
+source: 会话整理
+---
+
 # 素材提取 App — 会话交接
 
 ## 修订记录
@@ -21,6 +37,9 @@
 | 2026-09-13 11:57:00 | 补记后续两轮：代码审计发现的 5 个下载链路 bug 修复 + 死代码清理；图片缓存（修切 Tab 重新加载）/视频点击播放/剪贴板自动识别/Tab Bar 对比度/相册命名统一；补 CLI 测试环境说明 |
 | 2026-09-13 14:31:00 | 视频改为卡片内播放 + 全屏按钮，并修播放防盗链（抖音 403）；缩略图固定高度；图片分栏点击即选中；确认「说明」字段的 JSON 为小红书原图 EXIF，不处理。**订正**：播放代理只对抖音启用——小红书视频原本就能播（预签名 URL），不该改动 |
 | 2026-09-13 15:56:00 | 抖音播放补齐 contentInformationRequest；**回退**相册 originalFilename（引发保存失败）；重新下载改为弹窗选位置 + 即时反馈，抽出 SaveDestinationFlow/Picker 共用；下载列表错误提示可复制。发现 Xcode 26 会静默跳过 @MainActor 同步测试方法 |
+| 2026-09-14 00:00:00 | 补记 09-13 ~ 09-14 下载与播放链路：相册扩展名改为按 MIME 判定（修 `PHPhotosError 3302`）；图文作品不再产出视频任务；播放改为「先带 Referer 落盘再本地播」 |
+| 2026-09-29 00:00:00 | 补记图集与实况照片（09-14 ~ 09-29，26 个 commit）：图集区分「静态图 / 实况照片 / 独立视频片段」；实况照片合成（`LivePhotoBuilder`）真机通过、含声音、1 张与 50 张均正常；合并成一个视频；重新下载按项定位；相册越权读取导致 TCC 崩溃的修复与防回归。稳定 tag `livephoto-stable` |
+| 2026-09-30 00:00:00 | 小红书图集支持实况照片（字段与抖音不同：`urlDefault` / `livePhoto` / `stream.h264[0].masterUrl`）；修掉图集伴随片段被误当「笔记视频」导致的多余「视频」分栏；全量 31 个单测通过。改动在分支 `feature/xhs-live-photo` |
 
 ---
 
@@ -37,6 +56,8 @@ iPhone App（SwiftUI + SwiftData），实现 **X / 小红书 / 抖音** 三平�
 | **v1.1 暗房主题** | v1.1 | tag `v1.1-darkroom` | ✅ 历史版本，保留可回看 |
 | **v2.0 毛玻璃重设计** | v2.0 | `main` | ✅ 已合并，正式版 |
 | **三平台解析** | v2.1 | `main` | ✅ 三平台真机验证通过 |
+| **图集与实况照片** | v2.2 | `main`（tag `livephoto-stable`） | ✅ 真机通过（含声音） |
+| **小红书实况照片 + 假视频修复** | v2.3 | `feature/xhs-live-photo` | ⏳ 待真机复验后合 main |
 | **Python 后端** | — | `main` | ⚠️ 源码保留在 `03-后端源码/`，但 App 端已不再调用 |
 | **设计文档** | v2.0 | — | ✅ 决策记录 + 设计概要 + 23 mockup |
 
@@ -148,7 +169,7 @@ TDD 驱动：先写测试 → 验证失败 → 写最少代码 → 编译通过 
 | 平台 | 方案 | 关键点 |
 |------|------|--------|
 | **X** | 直连 `api.vxtwitter.com`（`VxTwitterParser`） | 下载直连 twimg.com；翻墙由手机 VPN 负责，后端不提供 |
-| **小红书** | 抓 HTML + 正则提取 `masterUrl`（`XhsParser`） | 无需签名；封面优先取 `imageList` 的 `urlDefault`（`og:image` 是平台默认图） |
+| **小红书** | 抓 HTML + 解析 `imageList`（`XhsParser`） | 无需签名；封面优先取 `imageList` 的 `urlDefault`（`og:image` 是平台默认图）；实况照片见下方专节 |
 | **抖音** | 隐藏 WKWebView（**伪装桌面 UA**）+ 注入 JS hook 拦截 detail 响应（`DouyinWebParser`） | 借抖音自己的 JS 生成 `a_bogus` 签名；**必须伪装桌面 UA**，否则进不去会请求 detail 的 PC 版页面 |
 
 ### 抖音方案：为什么用 WKWebView
@@ -208,12 +229,14 @@ TDD 驱动：先写测试 → 验证失败 → 写最少代码 → 编译通过 
 | 编号 | 事项 | 说明 |
 |------|------|------|
 | ~~V-01~~ | ~~真机验证抖音~~ | ✅ 2026-09-12 真机通过（修复：伪装桌面 UA） |
-| V-02 | 小红书边界 | 纯图笔记、多图、需登录的笔记 |
+| ~~V-02~~ | ~~小红书边界~~ | ✅ 2026-09-30 用户确认：纯图笔记、多图笔记均正常，且无需登录 |
 | ~~V-03~~ | ~~抖音图集~~ | ✅ 2026-09-12 真机通过（修复：`/note/` 改写为 `/video/`） |
+| V-04 | 小红书实况照片 | ✅ 2026-09-30 真机通过（`feature/xhs-live-photo`）；该分支上的假视频修复待复验 |
 
 ### 遗留问题
 
 - ~~`MultiPlatformParser.swift:156` 的 `enum DouyinParser` 死代码~~ ✅ 2026-09-12 已删除（48 行）
+- ⚠️ `main` 上的 `b5fb378` 是**临时诊断**（把小红书 HTML 落盘分析实况结构）。分支 `feature/xhs-live-photo` 已把它删掉，合并后 main 即恢复干净。
 
 ---
 
@@ -277,6 +300,94 @@ TDD 驱动：先写测试 → 验证失败 → 写最少代码 → 编译通过 
 
 ---
 
+## 图集与实况照片（2026-09-14 ~ 09-29，v2.2）
+
+分支：`main`（`85e0ad7` ~ `e45d2c1`）。稳定 tag：**`livephoto-stable`**（回退：`git checkout livephoto-stable`）。
+
+### 图集三类内容的判据
+
+抖音图文作品（`aweme_type 68`）的 `images[]` 里混着三种东西，必须区别对待（判据：`DouyinWebParser.galleryItemKind`，模型：`GalleryItemKind`）：
+
+| 判据 | 类型 | 怎么存 |
+|------|------|--------|
+| `live_photo_type == 1`（`clip_type 5`） | 实况照片 | 静态图 + 2~3 秒伴随片段，缝成配对资源 |
+| `clip_type == 4`（无 `live_photo_type`） | 独立短视频片段 | 按视频存；**以前被当图片下，只得到一张静态封面** |
+| 其余 | 普通静态图 | 直接存图 |
+
+⚠️ `video.play_addr.url_list[0]` 在图文作品里是**背景音乐 mp3**，不是视频。原先按 `.video` 存 → 相册判定无效资源（3302）。**正解是图文作品根本不产出视频任务**，不是纠扩展名。
+
+⚠️ 接口不给更高分辨率：图片只有 1080×2142 一档（webp / jpeg 分辨率相同），视频片段 `bit_rate` 只有 1 档；改 URL 模板取原图（`~noop.jpeg`）会 **403**——签名把模板一起签死了。
+
+### 实况照片合成（`LivePhotoBuilder`）
+
+相册靠一对**相同**的资产标识把两个独立文件认成实况照片，得自己缝：
+
+- 图片：EXIF `kCGImagePropertyMakerAppleDictionary` 的 key `"17"`
+- 视频：`com.apple.quicktime.content.identifier` = 同一标识，另需一条 `still-image-time` 元数据轨（值 `0xFF`，不是 0）
+
+**真机结论**：1 张 / 50 张均成功，长按会动**且有声音**，50 张不卡。
+
+⚠️ **两条最关键的坑**（都真机踩过）：
+
+1. **音视频必须并行推进**。串行（先写完视频再写音频）会让 `AVAssetWriter` 一直等落后的那一轨，两个 input **都**永远 `isReadyForMoreMediaData = false`，表现为「视频轨卡住」。
+2. **并行时音轨必须用独立的 `AVAssetReader`**。reader 及其 output 不是线程安全的，共用会让两个 `copyNextSampleBuffer` 竞态 → 合成失败 → 实况照片**静默退化成普通短视频**。
+
+另三个坑：①标识必须是 36 字符 UUID（ImageIO 会给不足 36 位的补 `.`，补齐后两侧对不上）；②静态图必须 JPEG/HEIC（抖音给的是 webp，需 ImageIO 转码，**ImageIO 能解 webp 不能编码**）；③图集图片 URL 带签名，**改后缀会 403**，只能老老实实转码。
+
+### 合并成一个视频（`VideoMerger`）
+
+`AVMutableVideoComposition` 多 instruction + 每段 `setTransform` 可行（已实测），画布取最大尺寸 + 每段等比居中。
+
+⚠️ `AVMutableComposition` 里**不要留零样本的音轨**：无条件 `addMutableTrack(.audio)` 之后没插入任何音频样本，导出会以 **-11849** 失败。必须按需建轨——真要插音频时才创建。
+
+⚠️ iOS 模拟器不支持视频导出（一律 -11849，与代码无关），单测用 `throw XCTSkip` 跳过；`Scripts/verify-videomerger.sh` 在 macOS 上用同一份源码做真实验证。
+
+### 重新下载（`retryItem`）
+
+图集片段和图片任务的地址**不在**顶层 `videos` 里（图片来源 `images[i].url`、片段来源 `images[i].motionVideoURL`），且每个任务只对应图集的一项。`DownloadItem.galleryClipIndex` 记录该项序号，重新解析后按序号取回同一项——不加这个字段会导致「点一张图把整个图集（50 张）重下一遍」。
+
+### ⚠️ 相册权限：越权调用会被 TCC 直接 abort
+
+- **写**相册（`PHAssetCreationRequest`）要 `NSPhotoLibraryAddUsageDescription`
+- **读**相册（`PHAsset.fetch*`）要 `NSPhotoLibraryUsageDescription`
+
+本项目**只声明了写入权限**。越权调用**不会**被拒绝、**不会**抛错，而是被 TCC 直接 `abort` 掉进程（堆栈特征 `___TCC_CRASHING_DUE_TO_PRIVACY_VIOLATION___`）。**编译期和模拟器都发现不了，只有真机点下去才崩**，排查成本极高。已加 `TC-PERM-01` 防回归。教训：**别为了「锦上添花」的回读校验去要多余权限**。
+
+### 播放侧防盗链
+
+抖音 CDN 要 Referer，下载侧早就有、播放侧没有 → 卡片内播放 403。AVFoundation 没有给 `AVPlayer` 设 HTTP 头的公开接口；试过 `AVAssetResourceLoaderDelegate` 自定义 scheme 代理请求，三轮都没通（该方案的典型失败模式），**已放弃**。现方案是 `AuthorizedAssetLoader.downloadToTemporaryFile` 先带 Referer 落盘、再本地播（全程公开 API），代价是点播要等下载。**只对抖音启用**——小红书视频是预签名 URL、一直能直接播，别给它套代理。
+
+---
+
+## 小红书实况照片（2026-09-30，v2.3）
+
+分支：`feature/xhs-live-photo`。字段名与抖音不同、语义一一对应：
+
+| 抖音 | 小红书 |
+|------|--------|
+| `images[i].url_list[0]` | `imageList[i].urlDefault` |
+| `live_photo_type == 1` | `imageList[i].livePhoto == true` |
+| `images[i].video.bit_rate[0].play_addr` | `imageList[i].stream.h264[0].masterUrl` |
+
+**必须走 JSON 解析**：这三个字段在同一个对象里，正则只能扁平地捞出所有 `urlDefault`、关联不起来。另外，反爬壳页拿不到内容，真机抓到的 HTML 才是准的；同一链接不同时刻可能返回不同页面变体。
+
+### ⚠️ 图集伴随片段别当成「笔记视频」（本次修）
+
+顶层视频原先是「取全文第一个 `masterUrl`」，而实况图集**每一项**的 `stream.h264[0].masterUrl` 都符合这个模式 → 第一张实况的片段被当成了笔记视频。
+
+后果不只是多一个「视频」分栏：`availableTabs` 会因此带上 `.video`，`selectFirstAvailableTab` 又会优先选中它 —— **用户解析完先看到的是一段 2 秒的零件，而不是内容**。
+
+修法：收集全文所有 `masterUrl`，**排除掉已识别为图集伴随片段的**，取剩下的第一个。**不能用**「`images` 非空就不建视频」——那会把真正带视频的笔记也误伤。`TC-XHS-03/04` 钉住。
+
+### 本轮排查方法沉淀
+
+1. **先钉死「被测的是哪份构建」**。本轮走了弯路：报「真机不通过」后，我读完整条链路、在 macOS 上用真实素材跑通了解析 / 映射 / 合成三段，全部正常——因为**代码本来就没问题**，那次真机测的是更早的一份构建（只有 HTML dump、还没有实况支持的解析器）。放一个**构建标记常量**落盘，一次运行就定死，比反复问「你 Build 过了吗」可靠。
+2. **先 diff「能工作的版本」**：用户说「之前可以」时，`git diff <能工作的commit> HEAD` 比推理快得多。
+3. **在 macOS 上用同一份源码验证 iOS 媒体逻辑**：AVFoundation / ImageIO 的 API 通用，把纯媒体工具用 `swiftc -O` 编成命令行程序跑真实验证。但**结果能验、运行时序不能验**——真机上「macOS 通过、真机失败」出现过不止一次，涉及时序的改动必须真机。
+4. **诊断粒度要落到「哪一步」**：把「合成配对资源」拆成「转码静态图」「重写动态片段」两步分别标进度；超时监控要用**独立于流程的任务**（写在 `while` 循环里的状态检查，遇到「循环压根不执行」就永远不触发），报出 `writer.status` / `reader.status` / `isReadyForMoreMediaData`。本次就是靠这行信息推翻了当时的错误假设。
+
+---
+
 ## v1.1 修改清单（2026-06-21 对话）
 
 ### Bug 修复
@@ -332,8 +443,9 @@ myapp/素材提取/
 │       │   ├── DownloadList/          ← v2.0 毛玻璃卡片（3 文件）
 │       │   ├── Profile/               ← 🆕 C3 v4「我的」
 │       │   └── Settings/              ← 🆕 设置+登出+注销
-│       ├── Services/        ← 6 文件（APIClient 多平台路由、MultiPlatformParser、DouyinWebParser、VxTwitterParser、DownloadManager、PersistenceService）
-│       └── Utilities/       ← 8 文件（Color+Theme 双色板 + URLParser/BatchDownloadBuilder/FilenameSanitizer/MediaStorage/PasteboardHelper/ImageMemoryCache/AuthorizedAssetLoader）
+│       ├── Services/        ← 7 文件（APIClient 多平台路由、MultiPlatformParser、DouyinWebParser、VxTwitterParser、DownloadManager、AlbumSaver 相册写入/实况配对、PersistenceService）
+│       ├── Utilities/       ← 10 文件（Color+Theme 双色板、LivePhotoBuilder 实况合成、VideoMerger 片段合并、AuthorizedAssetLoader 播放防盗链、URLParser、BatchDownloadBuilder、FilenameSanitizer、MediaStorage、PasteboardHelper、ImageMemoryCache）
+│       └── Scripts/         ← verify-videomerger.sh（在 macOS 上用同一份源码验证合并逻辑）
 ├── 05-测试/
 │   ├── 测试计划.md
 │   ├── 后端测试/（Spec审查 + 测试用例）
@@ -352,12 +464,14 @@ myapp/素材提取/
 
 | 分支/标签 | 内容 | 状态 |
 |----------|------|------|
-| `main` | v2.0 毛玻璃 + 三平台解析（正式版） | ✅ 已 push（最新 `1d7bf7b`） |
+| `main` | v2.0 毛玻璃 + 三平台 + 图集/实况照片（正式版） | ✅ 已 push（最新 `b5fb378`） |
 | `v1.1-darkroom` | v1.1 tag | ✅ 已 push |
-| `feature/v2.0-glassmorphism` | v2.0 开发分支 | ✅ 已合并进 main 并删除 |
 | `v2.0-glassmorphism` | v2.0 tag | ✅ 已 push |
+| `livephoto-stable` | 实况照片完成版 tag（`e45d2c1`） | ✅ 已 push |
+| `feature/v2.0-glassmorphism` | v2.0 开发分支 | ✅ 已合并进 main 并删除 |
+| `feature/xhs-live-photo` | 小红书实况照片 + 假视频修复（`b39f03e`、`e306b2f`、`9acce65`） | ⏳ 待真机复验后合 main |
 
-> ⚠️ 偏差记录：08-24 ~ 09-12 的三平台改动（`5b60891` ~ `1d7bf7b`，共 8 个 commit）**直接提交在 `main` 上**，未走 feature 分支，与下方会话规则「开发用分支，主线稳定」不符。后续开发建议恢复分支流程。
+> ⚠️ 偏差记录：08-24 ~ 09-29 的改动（三平台解析 → 图集与实况照片，`5b60891` ~ `e45d2c1`）**大部分直接提交在 `main` 上**，未走 feature 分支，与下方会话规则「开发用分支，主线稳定」不符。⚠️ 其中 `main` 上的 `b5fb378` 是**临时诊断**（小红书 HTML 落盘），`feature/xhs-live-photo` 已删除该代码，合并后 main 恢复干净。后续开发恢复分支流程。
 
 ```bash
 # 查看分支
@@ -388,6 +502,10 @@ git checkout v1.1-darkroom
 | 代码策略（v2.0） | 直接改 main | **独立 feature 分支 + TDD** | 原版 v1.1 不动，按 TDD 流程开发 |
 | 后端角色（v2.1） | App 调 Python 后端 | **App 端完全本地直连** | 龙哥明确「翻墙是用户手机 VPN 的事，后端不提供翻墙」；三平台解析均可客户端完成 |
 | 抖音解析（v2.1） | 抓 HTML / 自建 `a_bogus` 签名 | **WKWebView 借抖音 JS 签名** | 自建约 300 行且每两周失效，借 JS 签名自动适配 |
+| 实况照片合成（v2.2） | 去掉音轨（代价：静音） | **音视频并行推进 + 音轨独立 reader** | 串行会让 writer 一直等落后那轨（视频轨卡住）；共用 reader 会竞态 → 静默退化成普通短视频 |
+| 播放防盗链（v2.2） | `AVAssetResourceLoaderDelegate` 自定义 scheme | **先带 Referer 落盘再本地播** | 代理方案三轮不通（该方案典型失败模式），落盘全程公开 API |
+| 实况保存的校验（v2.2） | 回读相册确认 | **只自检本地文件的配对标识** | `PHAsset.fetch*` 需读相册权限，本项目只有写权限，越权会被 TCC 直接 abort |
+| 小红书顶层视频（v2.3） | 取全文第一个 `masterUrl` | **排除图集伴随片段后取第一个** | 实况图集每一项都带 masterUrl，取第一个会把第一张实况的片段当成笔记视频 |
 | 上架架构（远期） | — | **X 直连 + 小红书/抖音走后端** | 国内服务器不翻墙，规避 App 内 WebView 抓取风险 |
 
 ---
@@ -397,9 +515,12 @@ git checkout v1.1-darkroom
 | 位置 | 路径 | 说明 |
 |------|------|------|
 | 媒体文件（文件 App） | `<App沙盒>/Documents/Media/` | 文件名「博主名_@账号_正文」，文件 App / Finder 可见 |
-| 模拟器沙盒 | `~/Library/Developer/CoreSimulator/Devices/16BDA768...FEA/data/Containers/Data/Application/<UUID>/Documents/Media/` | 直接 open 查看 |
+| 诊断落盘（临时用） | `<App沙盒>/Documents/` 根目录 | 小红书 HTML / 解析诊断，定位完即删，需开启 `UIFileSharingEnabled` |
+| 模拟器沙盒 | `~/Library/Developer/CoreSimulator/Devices/<UDID>/data/Containers/Data/Application/<UUID>/Documents/` | 直接 open 查看 |
 
-> v2.0 起不再存相册（DCIM），改存「文件」App。需开启 `UIFileSharingEnabled`（已配置）。
+> **保存位置在 App 内二选一**（`SaveDestinationFlow` + `SaveDestinationPicker`）：相册 或 文件目录。
+> 选文件时用 `UIDocumentPicker` + security-scoped bookmark（存 `Data` 而非路径），
+> bookmark 为空则落到默认 `Documents/Media/`。**实况照片与合并视频只走相册**（相册才有配对资源的概念）。
 
 ---
 
@@ -407,8 +528,9 @@ git checkout v1.1-darkroom
 
 ```bash
 # App（当前唯一运行入口）：Xcode 打开 → Cmd+R
-# 路径：myapp/素材提取/04-App源码/MediaExtractor（main = v2.0 + 三平台正式版）
+# 路径：myapp/素材提取/04-App源码/MediaExtractor（main = 正式版；小红书实况在 feature/xhs-live-photo）
 # X 需手机 VPN；小红书/抖音国内直连，无需 VPN。
+# ⚠️ 真机验证前先确认 Xcode 在哪个分支 —— 测错构建会让人在正确的代码里找一个不存在的 bug。
 
 # 跑单元测试（UDID 用 xcrun simctl list devices 现查）
 cd "myapp/素材提取/04-App源码/MediaExtractor"
@@ -440,6 +562,8 @@ python3 -m pytest tests/ -v
 - **mockup 只新建不覆盖**：每次迭代创建新文件
 - **TDD 铁律**：先写测试 → 看失败 → 写最少代码 → 编译通过
 - **开发用分支，主线稳定**：功能开发走 feature 分支，完成后 PR 合并进 main
+- **涉及实况照片的改动先在分支上做**，用户真机验证通过再合 —— 这条路上「模拟器绿、真机挂」出现过至少三次
+- **临时诊断代码用完即删**，并在提交信息里写清「定位完即删」，避免留在主线（`main` 上的 `b5fb378` 就是这么留下的）
 
 ---
 
@@ -451,8 +575,11 @@ python3 -m pytest tests/ -v
 - 网络：**X 需手机 VPN**；小红书/抖音为国内平台，无需 VPN
 - iOS Simulator: iPhone 17 (iOS 26.3), UDID `2B4E795D-72B8-451D-A69C-7268DF7BB35E`（**UDID 会变，用 `xcrun simctl list devices` 现查**）
 - App 数据容器 UUID: `88C01D00-1A73-4527-ACD4-F8F8772EBEBF`
+- 单元测试：**31 个**（2 个 `VideoMerger` 用例在模拟器跳过）
 - 后端 venv: `myapp/素材提取/03-后端源码/backend/venv/`
 - git 推送：有代理时走 `127.0.0.1:7897`，代理未开时直连 push：`git -c http.proxy= -c https.proxy= push`
+- **本地验证 iOS 媒体逻辑的办法**：把纯媒体工具（`LivePhotoBuilder.swift` / `VideoMerger.swift`）+ 一个 `main.swift` 用
+  `swiftc -O -o run X.swift main.swift` 编成命令行程序，在 macOS 上跑真实素材。**结果能验，AVFoundation 运行时序不能验**。
 
 ---
 
